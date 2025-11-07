@@ -1,7 +1,10 @@
+mod blend_integration_tests;
+pub(crate) mod blend_utils;
 mod comprehensive;
 mod emissions_tests;
 mod epoch_integration;
 pub(crate) mod fee_vault_utils;
+mod real_emissions_integration;
 mod security;
 mod smoke;
 pub(crate) mod soroswap_utils;

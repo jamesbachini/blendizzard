@@ -1,0 +1,2 @@
+We're not using temp vs persistent storage correctly in every place. e.g. game sessions should be temporary but bumped to 30 days or something
+we also don't need to bump storage on epochs when we claim rewards.

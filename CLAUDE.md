@@ -176,7 +176,7 @@ The contract integrates with three external Soroban contracts:
 
 ### Data Structures
 
-Key storage types defined in PLAN.md:
+Key storage types defined in docs/PLAN.md:
 - `User`: Persistent user data across epochs
 - `EpochUser`: Per-epoch user state (fp, withdrawals, faction)
 - `EpochInfo`: Epoch metadata and standings
@@ -471,14 +471,15 @@ get_item_source("soroban-sdk", "23.1.0", <item_id>)
 
 ## Key Documentation
 
-- Detailed technical plan: `PLAN.md`
-- Tooling reference: `AGENTS.md`
-- Original requirements: `OG_PLAN.md`
-- Suggested additions: `SUGGESTED_ADDITIONS.md`
+- Detailed technical plan: `docs/PLAN.md`
+- Tooling reference: `docs/AGENTS.md`
+- Original requirements: `docs/OG_PLAN.md`
+- Security audit: `docs/SECURITY_AUDIT.md`
+- Production readiness: `docs/PRODUCTION_READINESS.md`
 
 ## Important Notes
 
-- See PLAN.md for complete contract method specifications and data structures
+- See docs/PLAN.md for complete contract method specifications and data structures
 - All FP calculations use 7-decimal fixed-point math (SCALAR_7 = 10_000_000)
 - Game outcome verification is oracle-based initially, will migrate to ZK proofs
 - Epoch duration is configurable but defaults to 4 days (345,600 seconds)

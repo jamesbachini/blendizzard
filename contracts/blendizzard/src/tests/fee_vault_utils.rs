@@ -4,6 +4,7 @@
 ///
 /// This module provides helpers for testing fee-vault integration.
 /// Based on patterns from blend-together project.
+use fee_vault_v2::FeeVault;
 use soroban_sdk::{contract, contractimpl, Address, Env};
 
 // ============================================================================
@@ -20,10 +21,10 @@ pub use fee_vault::FeeVaultClient;
 // Helper Functions
 // ============================================================================
 
-/// Create and initialize a fee vault contract
+/// Create and initialize a fee vault contract using env.register pattern
 ///
 /// # Arguments
-/// * `env` - Test environment
+/// * `env` - Test environment (must have mock_all_auths() called before)
 /// * `admin` - Admin address for the vault
 /// * `pool` - Blend pool address
 /// * `asset` - Asset address (USDC)
@@ -33,6 +34,10 @@ pub use fee_vault::FeeVaultClient;
 ///
 /// # Returns
 /// Initialized FeeVaultClient
+///
+/// # Note
+/// This uses the register pattern which works well with mock_all_auths().
+/// Ensure env.mock_all_auths() is called before using this function.
 pub fn create_fee_vault<'a>(
     env: &Env,
     admin: &Address,
@@ -42,9 +47,9 @@ pub fn create_fee_vault<'a>(
     rate: u32,
     signer: Option<Address>,
 ) -> FeeVaultClient<'a> {
-    // Register contract with constructor arguments
+    // Register the contract - requires mock_all_auths() to be called first
     let address = env.register(
-        fee_vault::WASM,
+        FeeVault {},
         (
             admin.clone(),
             pool.clone(),
@@ -74,6 +79,17 @@ pub fn create_test_fee_vault<'a>(
 // Mock Vault (for smoke tests that don't need real vault)
 // ============================================================================
 
+use soroban_sdk::contracttype;
+
+/// Storage key for mock vault state
+#[contracttype]
+pub enum MockVaultDataKey {
+    /// Admin BLND balance available for withdrawal
+    AdminBalance,
+    /// Emissions available for claiming per reserve token ID
+    Emissions(u32),
+}
+
 #[contract]
 pub struct MockVault;
 
@@ -94,29 +110,87 @@ impl MockVault {
         0
     }
 
-    /// Mock admin_withdraw - returns the requested amount
-    /// This allows epoch cycling tests to simulate BLND withdrawal
+    /// Mock admin_withdraw - withdraws from stored admin balance
+    /// Returns the requested amount and decrements the balance
+    pub fn admin_withdraw(env: Env, amount: i128) -> i128 {
+        let key = MockVaultDataKey::AdminBalance;
+        let current_balance = env
+            .storage()
+            .instance()
+            .get::<MockVaultDataKey, i128>(&key)
+            .unwrap_or(0);
+
+        // Return min of requested amount and available balance
+        let withdraw_amount = amount.min(current_balance);
+
+        // Update balance
+        env.storage()
+            .instance()
+            .set(&key, &(current_balance - withdraw_amount));
+
+        withdraw_amount
+    }
+
+    /// Mock get_underlying_admin_balance - returns stored admin balance
+    pub fn get_underlying_admin_balance(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get::<MockVaultDataKey, i128>(&MockVaultDataKey::AdminBalance)
+            .unwrap_or(0)
+    }
+
+    /// Mock claim_emissions - claims from stored emissions per reserve token ID
+    /// Transfers BLND to the `to` address and returns total claimed
     ///
-    /// Note: This doesn't actually transfer BLND. Tests using epoch cycling
-    /// should mint BLND directly to the Blendizzard contract before each cycle,
-    /// or use a stateful vault that holds and transfers real BLND tokens.
-    pub fn admin_withdraw(_env: Env, amount: i128) -> i128 {
-        amount // Return requested amount
+    /// # Arguments
+    /// * `reserve_token_ids` - Vec of reserve token IDs to claim from
+    /// * `to` - Address to receive the claimed BLND
+    ///
+    /// # Returns
+    /// Total BLND claimed across all reserve token IDs
+    pub fn claim_emissions(
+        env: Env,
+        reserve_token_ids: soroban_sdk::Vec<u32>,
+        _to: Address,
+    ) -> i128 {
+        let mut total_claimed = 0i128;
+
+        // Sum emissions from all specified reserve token IDs
+        for reserve_id in reserve_token_ids.iter() {
+            let key = MockVaultDataKey::Emissions(reserve_id);
+            let emissions = env
+                .storage()
+                .instance()
+                .get::<MockVaultDataKey, i128>(&key)
+                .unwrap_or(0);
+
+            total_claimed += emissions;
+
+            // Reset emissions for this reserve to 0 after claiming
+            env.storage().instance().set(&key, &0i128);
+        }
+
+        total_claimed
     }
 
-    /// Mock get_underlying_admin_balance - returns 1000 BLND for testing
-    /// This allows epoch cycling tests to have BLND available for swap
-    /// Note: The actual BLND must be minted to the Blendizzard contract in tests
-    pub fn get_underlying_admin_balance(_env: Env) -> i128 {
-        1000_0000000 // 1000 BLND per cycle
+    // ============================================================================
+    // Test Helper Functions (for setting up mock state)
+    // ============================================================================
+
+    /// Set admin BLND balance for testing
+    /// This is a test-only function to configure the mock vault
+    pub fn set_admin_balance(env: Env, amount: i128) {
+        env.storage()
+            .instance()
+            .set(&MockVaultDataKey::AdminBalance, &amount);
     }
 
-    /// Mock claim_emissions - returns 0 for testing
-    /// This simulates claiming BLND emissions from the Blend pool
-    /// For mock testing, we just return 0 since we don't have real emissions
-    /// Note: The actual BLND must be minted to the Blendizzard contract in tests
-    pub fn claim_emissions(_env: Env, _reserve_token_ids: soroban_sdk::Vec<u32>, _to: Address) -> i128 {
-        0 // No emissions in mock
+    /// Set emissions for a specific reserve token ID
+    /// This is a test-only function to configure the mock vault
+    pub fn set_emissions(env: Env, reserve_token_id: u32, amount: i128) {
+        env.storage()
+            .instance()
+            .set(&MockVaultDataKey::Emissions(reserve_token_id), &amount);
     }
 }
 
@@ -125,11 +199,15 @@ pub fn create_mock_vault(env: &Env) -> Address {
     env.register(MockVault, ())
 }
 
+/// Create a mock vault client for configuring and using the mock vault
+pub fn create_mock_vault_client<'a>(env: &'a Env) -> MockVaultClient<'a> {
+    let address = create_mock_vault(env);
+    MockVaultClient::new(env, &address)
+}
+
 // ============================================================================
 // Mock Pool (for real vault)
 // ============================================================================
-
-use soroban_sdk::contracttype;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

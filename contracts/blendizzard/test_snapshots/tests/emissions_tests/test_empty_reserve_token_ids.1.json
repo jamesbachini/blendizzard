@@ -690,7 +690,7 @@
                         "symbol": "reward_pool"
                       },
                       "val": {
-                        "i128": "9969006090"
+                        "i128": "0"
                       }
                     },
                     {
@@ -1272,7 +1272,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "40000000000"
+                        "i128": "50000000000"
                       }
                     },
                     {
@@ -1342,7 +1342,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "100010000000000"
+                        "i128": "100000000000000"
                       }
                     },
                     {
@@ -1562,76 +1562,6 @@
                   "symbol": "Balance"
                 },
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "Balance"
-                    },
-                    {
-                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "amount"
-                      },
-                      "val": {
-                        "i128": "9969006090"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "authorized"
-                      },
-                      "val": {
-                        "bool": true
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "clawback"
-                      },
-                      "val": {
-                        "bool": false
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          2147483746
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "Balance"
-                },
-                {
                   "address": "CD5MCIUBOFIAPHS4MMDYOPNIACG73EMNUNHXHO4E32SA7Y2YX7HTQVI3"
                 }
               ]
@@ -1664,7 +1594,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "99990030993910"
+                        "i128": "100000000000000"
                       }
                     },
                     {
@@ -1938,7 +1868,7 @@
                           "u32": 2
                         },
                         "val": {
-                          "i128": "100010000000000"
+                          "i128": "100000000000000"
                         }
                       },
                       {
@@ -1946,7 +1876,7 @@
                           "u32": 3
                         },
                         "val": {
-                          "i128": "99990030993910"
+                          "i128": "100000000000000"
                         }
                       },
                       {
