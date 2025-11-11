@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, BytesN, Env};
+use soroban_sdk::{contracttype, Address, Env};
 
 use crate::types::{Config, EpochInfo, EpochUser, GameSession, User};
 
@@ -32,7 +32,7 @@ pub enum DataKey {
     Epoch(u32),
 
     /// Game session data - Session(session_id) -> GameSession
-    Session(BytesN<32>),
+    Session(u32),
 
     /// Whitelisted game contracts - Game(game_address) -> bool
     Game(Address),
@@ -154,24 +154,24 @@ pub(crate) fn set_epoch(env: &Env, epoch: u32, data: &EpochInfo) {
 }
 
 /// Get game session
-pub(crate) fn get_session(env: &Env, session_id: &BytesN<32>) -> Option<GameSession> {
+pub(crate) fn get_session(env: &Env, session_id: u32) -> Option<GameSession> {
     env.storage()
         .temporary()
-        .get(&DataKey::Session(session_id.clone()))
+        .get(&DataKey::Session(session_id))
 }
 
 /// Set game session
-pub(crate) fn set_session(env: &Env, session_id: &BytesN<32>, data: &GameSession) {
+pub(crate) fn set_session(env: &Env, session_id: u32, data: &GameSession) {
     env.storage()
         .temporary()
-        .set(&DataKey::Session(session_id.clone()), data);
+        .set(&DataKey::Session(session_id), data);
 }
 
 /// Check if session exists
-pub(crate) fn has_session(env: &Env, session_id: &BytesN<32>) -> bool {
+pub(crate) fn has_session(env: &Env, session_id: u32) -> bool {
     env.storage()
         .temporary()
-        .has(&DataKey::Session(session_id.clone()))
+        .has(&DataKey::Session(session_id))
 }
 
 /// Check if a game contract is whitelisted

@@ -188,6 +188,7 @@ version = "0.1.0"
 dependencies = [
  "blend-contract-sdk",
  "fee-vault-v2",
+ "number-guess",
  "sep-40-oracle",
  "sep-41-token",
  "soroban-fixed-point-math 1.4.0 (git+https://github.com/kalepail/soroban-fixed-point-math)",
@@ -901,6 +902,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "number-guess"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Bytes, BytesN, Env};
+use soroban_sdk::{Address, Bytes, Env};
 
 use crate::errors::Error;
 use crate::events::{emit_game_ended, emit_game_started};
@@ -100,7 +100,7 @@ pub(crate) fn is_game(env: &Env, game_id: &Address) -> bool {
 pub(crate) fn start_game(
     env: &Env,
     game_id: &Address,
-    session_id: &BytesN<32>,
+    session_id: u32,
     player1: &Address,
     player2: &Address,
     player1_wager: i128,
@@ -149,7 +149,7 @@ pub(crate) fn start_game(
     // Create game session
     let session = GameSession {
         game_id: game_id.clone(),
-        session_id: session_id.clone(),
+        session_id,
         player1: player1.clone(),
         player2: player2.clone(),
         player1_wager,
@@ -198,7 +198,7 @@ pub(crate) fn start_game(
 pub(crate) fn end_game(
     env: &Env,
     game_id: &Address,
-    session_id: &BytesN<32>,
+    session_id: u32,
     proof: &Bytes,
     outcome: &GameOutcome,
 ) -> Result<(), Error> {
@@ -216,7 +216,7 @@ pub(crate) fn end_game(
 
     // Validate outcome matches session
     if outcome.game_id != *game_id
-        || outcome.session_id != *session_id
+        || outcome.session_id != session_id
         || outcome.player1 != session.player1
         || outcome.player2 != session.player2
     {

@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use soroban_sdk::{contracttype, Address, BytesN, Map, Vec};
+use soroban_sdk::{contracttype, Address, Map, Vec};
 
 // ============================================================================
 // Factions
@@ -109,7 +109,7 @@ pub struct GameSession {
     pub game_id: Address,
 
     /// Unique session identifier for this game instance
-    pub session_id: BytesN<32>,
+    pub session_id: u32,
 
     /// First player's address
     pub player1: Address,
@@ -163,7 +163,7 @@ pub struct GameOutcome {
     pub game_id: Address,
 
     /// Unique session identifier
-    pub session_id: BytesN<32>,
+    pub session_id: u32,
 
     /// First player's address
     pub player1: Address,

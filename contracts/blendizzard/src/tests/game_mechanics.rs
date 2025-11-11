@@ -14,7 +14,7 @@ use super::fee_vault_utils::{create_mock_vault, MockVaultClient};
 use super::testutils::{create_blendizzard_contract, setup_test_env};
 use crate::BlendizzardClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{vec, Address, BytesN, Env};
+use soroban_sdk::{vec, Address, Env};
 
 // ============================================================================
 // Test Setup Helpers
@@ -77,7 +77,7 @@ fn test_start_game_initializes_fp_from_vault() {
     blendizzard.select_faction(&player2, &1); // PointyStick
 
     // Start a game
-    let session_id = BytesN::from_array(&env, &[1u8; 32]);
+    let session_id = 1u32;
     blendizzard.start_game(
         &game_contract,
         &session_id,
@@ -119,7 +119,7 @@ fn test_end_game_spends_fp_and_updates_faction_standings() {
     blendizzard.select_faction(&player2, &1);
 
     // Start game
-    let session_id = BytesN::from_array(&env, &[2u8; 32]);
+    let session_id = 2u32;
     let wager = 100_0000000;
     blendizzard.start_game(&game_contract, &session_id, &player1, &player2, &wager, &wager);
 
@@ -188,7 +188,7 @@ fn test_faction_locks_on_first_game() {
     mock_vault.set_user_balance(&player2, &1000_0000000);
     blendizzard.select_faction(&player2, &1);
 
-    let session_id = BytesN::from_array(&env, &[3u8; 32]);
+    let session_id = 3u32;
     blendizzard.start_game(&game_contract, &session_id, &player, &player2, &50_0000000, &50_0000000);
 
     // Faction should now be locked
@@ -232,7 +232,7 @@ fn test_fp_calculation_with_amount_multiplier() {
     blendizzard.select_faction(&player2, &1);
 
     // Start game to initialize FP
-    let session_id = BytesN::from_array(&env, &[8u8; 32]);
+    let session_id = 8u32;
     blendizzard.start_game(&game_contract, &session_id, &player1, &player2, &10_0000000, &10_0000000);
 
     let p1_epoch = blendizzard.get_epoch_player(&player1);
@@ -283,7 +283,7 @@ fn test_fp_calculation_with_time_multiplier() {
     blendizzard.select_faction(&opponent, &2);
 
     // Player1 starts a game immediately - deposit_timestamp set at T=0
-    let session_id1 = BytesN::from_array(&env, &[9u8; 32]);
+    let session_id1 = 9u32;
     blendizzard.start_game(&game_contract, &session_id1, &player1, &opponent, &50_0000000, &50_0000000);
 
     // Get player1's FP (calculated with time_multiplier at T=0, so ~1.0x)
@@ -310,7 +310,7 @@ fn test_fp_calculation_with_time_multiplier() {
     );
 
     // FP is locked once initialized - starting another game shouldn't change it
-    let session_id2 = BytesN::from_array(&env, &[10u8; 32]);
+    let session_id2 = 10u32;
     blendizzard.start_game(&game_contract, &session_id2, &player1, &opponent, &50_0000000, &50_0000000);
 
     let p1_epoch_again = blendizzard.get_epoch_player(&player1);

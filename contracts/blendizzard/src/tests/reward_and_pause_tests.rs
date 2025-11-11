@@ -10,8 +10,8 @@ use super::fee_vault_utils::{create_mock_vault, MockVaultClient};
 use super::testutils::{create_blendizzard_contract, setup_test_env};
 use crate::BlendizzardClient;
 use sep_41_token::testutils::MockTokenClient;
-use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{vec, Address, BytesN, Env};
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{vec, Address, Env};
 
 // ============================================================================
 // Test Helpers
@@ -69,7 +69,7 @@ fn test_pause_blocks_start_game() {
     blendizzard.select_faction(&player2, &1);
 
     // Works before pause
-    let session1 = BytesN::from_array(&env, &[1u8; 32]);
+    let session1 = 1u32;
     blendizzard.start_game(&game, &session1, &player1, &player2, &100_0000000, &50_0000000);
 
     // Pause contract
@@ -77,7 +77,7 @@ fn test_pause_blocks_start_game() {
     assert!(blendizzard.is_paused());
 
     // Should fail after pause
-    let session2 = BytesN::from_array(&env, &[2u8; 32]);
+    let session2 = 2u32;
     let result = blendizzard.try_start_game(&game, &session2, &player1, &player2, &100_0000000, &50_0000000);
     assert!(result.is_err(), "start_game should fail when paused");
 }
@@ -196,7 +196,7 @@ fn test_start_game_with_zero_wager() {
     blendizzard.select_faction(&player2, &1);
 
     // Try to start game with 0 wager (should fail)
-    let session = BytesN::from_array(&env, &[10u8; 32]);
+    let session = 10u32;
     let result = blendizzard.try_start_game(&game, &session, &player1, &player2, &0, &100_0000000);
     assert!(result.is_err(), "Should fail with zero wager");
 }
@@ -217,7 +217,7 @@ fn test_start_game_with_insufficient_fp() {
     blendizzard.select_faction(&player2, &1);
 
     // Try to wager more than they have (with multipliers, they'll have ~11-12 FP)
-    let session = BytesN::from_array(&env, &[11u8; 32]);
+    let session = 11u32;
     let result = blendizzard.try_start_game(&game, &session, &player1, &player2, &1000_0000000, &10_0000000);
     assert!(result.is_err(), "Should fail with insufficient FP");
 }
@@ -237,7 +237,7 @@ fn test_start_game_duplicate_session_id() {
     blendizzard.select_faction(&player2, &1);
 
     // Start first game
-    let session = BytesN::from_array(&env, &[12u8; 32]);
+    let session = 12u32;
     blendizzard.start_game(&game, &session, &player1, &player2, &100_0000000, &50_0000000);
 
     // Try to start another game with same session_id (should fail)
@@ -254,7 +254,7 @@ fn test_end_game_nonexistent_session() {
     let player2 = Address::generate(&env);
 
     // Try to end a session that doesn't exist
-    let session = BytesN::from_array(&env, &[13u8; 32]);
+    let session = 13u32;
     let proof = soroban_sdk::Bytes::new(&env);
     let outcome = crate::types::GameOutcome {
         game_id: game.clone(),
@@ -304,7 +304,7 @@ fn test_faction_switch_applies_next_epoch() {
     blendizzard.select_faction(&opponent, &1);
 
     // Play first game (locks faction for epoch 0)
-    let session1 = BytesN::from_array(&env, &[20u8; 32]);
+    let session1 = 20u32;
     blendizzard.start_game(&game, &session1, &player, &opponent, &50_0000000, &50_0000000);
 
     let epoch0_player = blendizzard.get_epoch_player(&player);
@@ -344,11 +344,11 @@ fn test_deposit_timestamp_initialized_on_first_game() {
     blendizzard.select_faction(&opponent, &1);
 
     // Before first game, player might not exist in storage
-    let player_result = blendizzard.try_get_player(&player);
+    let _player_result = blendizzard.try_get_player(&player);
     // If user doesn't exist yet, that's OK
 
     // Start first game
-    let session = BytesN::from_array(&env, &[30u8; 32]);
+    let session = 30u32;
     blendizzard.start_game(&game, &session, &player, &opponent, &50_0000000, &50_0000000);
 
     // After first game, deposit_timestamp should be set
@@ -372,7 +372,7 @@ fn test_last_epoch_balance_updated_on_first_game() {
     blendizzard.select_faction(&opponent, &1);
 
     // Start first game
-    let session = BytesN::from_array(&env, &[31u8; 32]);
+    let session = 31u32;
     blendizzard.start_game(&game, &session, &player, &opponent, &50_0000000, &50_0000000);
 
     // Check last_epoch_balance was snapshotted
@@ -417,7 +417,7 @@ fn test_start_game_with_unwhitelisted_game() {
 
     // Try to start game with un unwhitelisted game contract
     let fake_game = Address::generate(&env);
-    let session = BytesN::from_array(&env, &[40u8; 32]);
+    let session = 40u32;
 
     let result = blendizzard.try_start_game(&fake_game, &session, &player1, &player2, &100_0000000, &50_0000000);
     assert!(result.is_err(), "Should fail with unwhitelisted game");
@@ -527,7 +527,7 @@ fn test_get_faction_standings() {
     blendizzard.select_faction(&player2, &1);
 
     // Play and end game
-    let session = BytesN::from_array(&env, &[50u8; 32]);
+    let session = 50u32;
     blendizzard.start_game(&game, &session, &player1, &player2, &100_0000000, &50_0000000);
 
     let proof = soroban_sdk::Bytes::new(&env);

@@ -372,7 +372,7 @@ impl Blendizzard {
     pub fn start_game(
         env: Env,
         game_id: Address,
-        session_id: BytesN<32>,
+        session_id: u32,
         player1: Address,
         player2: Address,
         player1_wager: i128,
@@ -382,7 +382,7 @@ impl Blendizzard {
         game::start_game(
             &env,
             &game_id,
-            &session_id,
+            session_id,
             &player1,
             &player2,
             player1_wager,
@@ -404,11 +404,11 @@ impl Blendizzard {
     pub fn end_game(
         env: Env,
         game_id: Address,
-        session_id: BytesN<32>,
+        session_id: u32,
         proof: Bytes,
         outcome: GameOutcome,
     ) -> Result<(), Error> {
-        game::end_game(&env, &game_id, &session_id, &proof, &outcome)
+        game::end_game(&env, &game_id, session_id, &proof, &outcome)
     }
 
     // ========================================================================

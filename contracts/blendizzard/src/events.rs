@@ -1,4 +1,4 @@
-use soroban_sdk::{contractevent, Address, BytesN, Env};
+use soroban_sdk::{contractevent, Address, Env};
 
 // ============================================================================
 // Event Definitions using #[contractevent] Macro
@@ -70,7 +70,7 @@ pub struct GameStarted {
     #[topic]
     pub game_id: Address,
     #[topic]
-    pub session_id: BytesN<32>,
+    pub session_id: u32,
     pub player1: Address,
     pub player2: Address,
     pub player1_wager: i128,
@@ -82,7 +82,7 @@ pub struct GameEnded {
     #[topic]
     pub game_id: Address,
     #[topic]
-    pub session_id: BytesN<32>,
+    pub session_id: u32,
     pub winner: Address,
     pub loser: Address,
     pub fp_contributed: i128,  // Winner's FP that contributes to faction standings
@@ -169,7 +169,7 @@ pub(crate) fn emit_faction_locked(env: &Env, user: &Address, epoch: u32, faction
 pub(crate) fn emit_game_started(
     env: &Env,
     game_id: &Address,
-    session_id: &BytesN<32>,
+    session_id: u32,
     player1: &Address,
     player2: &Address,
     player1_wager: i128,
@@ -177,7 +177,7 @@ pub(crate) fn emit_game_started(
 ) {
     GameStarted {
         game_id: game_id.clone(),
-        session_id: session_id.clone(),
+        session_id,
         player1: player1.clone(),
         player2: player2.clone(),
         player1_wager,
@@ -190,14 +190,14 @@ pub(crate) fn emit_game_started(
 pub(crate) fn emit_game_ended(
     env: &Env,
     game_id: &Address,
-    session_id: &BytesN<32>,
+    session_id: u32,
     winner: &Address,
     loser: &Address,
     fp_contributed: i128,
 ) {
     GameEnded {
         game_id: game_id.clone(),
-        session_id: session_id.clone(),
+        session_id,
         winner: winner.clone(),
         loser: loser.clone(),
         fp_contributed,
