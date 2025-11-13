@@ -21,8 +21,8 @@ fn test_reserve_token_ids_stored_in_config() {
     // Note: We can't directly query config from the contract API
     // but we can verify it's used by checking epoch cycling works
     // This test verifies the contract was created successfully with reserve_token_ids
-    let epoch = client.get_epoch(&None);
-    assert_eq!(epoch.epoch_number, 0);
+    let current_epoch_num = client.get_current_epoch();
+    assert_eq!(current_epoch_num, 0, "Should start in epoch 0");
 }
 
 #[test]
@@ -98,7 +98,7 @@ fn test_epoch_cycle_with_mock_emissions() {
     // The fact that this doesn't panic means claim_emissions was called successfully
     assert!(result.is_ok() || result.is_err());
 
-    let epoch0 = client.get_epoch(&Some(0));
+    let epoch0 = client.get_epoch(&0);
     assert!(epoch0.is_finalized);
 }
 
@@ -121,7 +121,7 @@ fn test_epoch_cycle_with_zero_emissions() {
     // Reward pool will come from admin_withdraw only (or be 0 if that's also 0)
     let _result = client.try_cycle_epoch();
 
-    let epoch0 = client.get_epoch(&Some(0));
+    let epoch0 = client.get_epoch(&0);
     assert!(epoch0.is_finalized);
 
     // With mock vault, reward pool may be 0 or have some USDC from swap
@@ -178,7 +178,7 @@ fn test_empty_reserve_token_ids() {
     // Should still work, just won't claim any emissions
     let _result = client.try_cycle_epoch();
 
-    let epoch0 = client.get_epoch(&Some(0));
+    let epoch0 = client.get_epoch(&0);
     assert!(epoch0.is_finalized);
 }
 

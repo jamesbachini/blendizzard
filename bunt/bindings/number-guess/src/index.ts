@@ -72,9 +72,6 @@ export interface GameOutcome {
   winner: boolean;
 }
 
-
-
-
 export interface Client {
   /**
    * Construct and simulate a upgrade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -129,6 +126,57 @@ export interface Client {
      */
     simulate?: boolean;
   }) => Promise<AssembledTransaction<Result<Game>>>
+
+  /**
+   * Construct and simulate a get_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Get the current admin address
+   * 
+   * # Returns
+   * * `Address` - The admin address
+   */
+  get_admin: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Result<string>>>
+
+  /**
+   * Construct and simulate a set_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Set a new admin address
+   * 
+   * # Arguments
+   * * `new_admin` - The new admin address
+   * 
+   * # Errors
+   * * `NotAdmin` - If caller is not the current admin
+   */
+  set_admin: ({new_admin}: {new_admin: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a make_guess transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -221,6 +269,57 @@ export interface Client {
     simulate?: boolean;
   }) => Promise<AssembledTransaction<Result<string>>>
 
+  /**
+   * Construct and simulate a get_blendizzard transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Get the current Blendizzard contract address
+   * 
+   * # Returns
+   * * `Address` - The Blendizzard contract address
+   */
+  get_blendizzard: (options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Result<string>>>
+
+  /**
+   * Construct and simulate a set_blendizzard transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Set a new Blendizzard contract address
+   * 
+   * # Arguments
+   * * `new_blendizzard` - The new Blendizzard contract address
+   * 
+   * # Errors
+   * * `NotAdmin` - If caller is not the admin
+   */
+  set_blendizzard: ({new_blendizzard}: {new_blendizzard: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Result<void>>>
+
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(
@@ -246,23 +345,28 @@ export class Client extends ContractClient {
         "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAABAAAAAEAAAAAAAAABEdhbWUAAAABAAAABAAAAAAAAAAAAAAAC0dhbWVDb3VudGVyAAAAAAAAAAAAAAAAEkJsZW5kaXp6YXJkQWRkcmVzcwAAAAAAAAAAAAAAAAAFQWRtaW4AAAA=",
         "AAAAAgAAAAAAAAAAAAAACkdhbWVTdGF0dXMAAAAAAAIAAAAAAAAAAAAAAAZBY3RpdmUAAAAAAAAAAAAAAAAABUVuZGVkAAAA",
         "AAAAAQAAAAAAAAAAAAAAC0dhbWVPdXRjb21lAAAAAAUAAAAAAAAAB2dhbWVfaWQAAAAAEwAAAAAAAAAHcGxheWVyMQAAAAATAAAAAAAAAAdwbGF5ZXIyAAAAABMAAAAAAAAACnNlc3Npb25faWQAAAAAAAQAAAAAAAAABndpbm5lcgAAAAAAAQ==",
-        "AAAABQAAAAAAAAAAAAAADkd1ZXNzTWFkZUV2ZW50AAAAAAABAAAAEGd1ZXNzX21hZGVfZXZlbnQAAAADAAAAAAAAAAdnYW1lX2lkAAAAAAQAAAAAAAAAAAAAAAZwbGF5ZXIAAAAAABMAAAAAAAAAAAAAAAVndWVzcwAAAAAAAAQAAAAAAAAAAg==",
-        "AAAABQAAAAAAAAAAAAAAEEdhbWVTdGFydGVkRXZlbnQAAAABAAAAEmdhbWVfc3RhcnRlZF9ldmVudAAAAAAAAwAAAAAAAAAHZ2FtZV9pZAAAAAAEAAAAAAAAAAAAAAAHcGxheWVyMQAAAAATAAAAAAAAAAAAAAAHcGxheWVyMgAAAAATAAAAAAAAAAI=",
         "AAAAAAAAAKVVcGRhdGUgdGhlIGNvbnRyYWN0IFdBU00gaGFzaCAodXBncmFkZSBjb250cmFjdCkKCiMgQXJndW1lbnRzCiogYG5ld193YXNtX2hhc2hgIC0gVGhlIGhhc2ggb2YgdGhlIG5ldyBXQVNNIGJpbmFyeQoKIyBFcnJvcnMKKiBgTm90QWRtaW5gIC0gSWYgY2FsbGVyIGlzIG5vdCB0aGUgYWRtaW4AAAAAAAAHdXBncmFkZQAAAAABAAAAAAAAAA1uZXdfd2FzbV9oYXNoAAAAAAAD7gAAACAAAAABAAAD6QAAA+0AAAAAAAAAAw==",
-        "AAAABQAAAAAAAAAAAAAAE1dpbm5lclJldmVhbGVkRXZlbnQAAAAAAQAAABV3aW5uZXJfcmV2ZWFsZWRfZXZlbnQAAAAAAAADAAAAAAAAAAdnYW1lX2lkAAAAAAQAAAAAAAAAAAAAAAZ3aW5uZXIAAAAAABMAAAAAAAAAAAAAAA53aW5uaW5nX251bWJlcgAAAAAABAAAAAAAAAAC",
         "AAAAAAAAAJJHZXQgZ2FtZSBpbmZvcm1hdGlvbi4KCiMgQXJndW1lbnRzCiogYGdhbWVfaWRgIC0gVGhlIElEIG9mIHRoZSBnYW1lCgojIFJldHVybnMKKiBgR2FtZWAgLSBUaGUgZ2FtZSBzdGF0ZSAoaW5jbHVkZXMgd2lubmluZyBudW1iZXIgYWZ0ZXIgZ2FtZSBlbmRzKQAAAAAACGdldF9nYW1lAAAAAQAAAAAAAAAHZ2FtZV9pZAAAAAAEAAAAAQAAA+kAAAfQAAAABEdhbWUAAAAD",
+        "AAAAAAAAAEhHZXQgdGhlIGN1cnJlbnQgYWRtaW4gYWRkcmVzcwoKIyBSZXR1cm5zCiogYEFkZHJlc3NgIC0gVGhlIGFkbWluIGFkZHJlc3MAAAAJZ2V0X2FkbWluAAAAAAAAAAAAAAEAAAPpAAAAEwAAAAM=",
+        "AAAAAAAAAIZTZXQgYSBuZXcgYWRtaW4gYWRkcmVzcwoKIyBBcmd1bWVudHMKKiBgbmV3X2FkbWluYCAtIFRoZSBuZXcgYWRtaW4gYWRkcmVzcwoKIyBFcnJvcnMKKiBgTm90QWRtaW5gIC0gSWYgY2FsbGVyIGlzIG5vdCB0aGUgY3VycmVudCBhZG1pbgAAAAAACXNldF9hZG1pbgAAAAAAAAEAAAAAAAAACW5ld19hZG1pbgAAAAAAABMAAAABAAAD6QAAA+0AAAAAAAAAAw==",
         "AAAAAAAAANdNYWtlIGEgZ3Vlc3MgZm9yIHRoZSBjdXJyZW50IGdhbWUuClBsYXllcnMgY2FuIGd1ZXNzIGEgbnVtYmVyIGJldHdlZW4gMSBhbmQgMTAuCgojIEFyZ3VtZW50cwoqIGBnYW1lX2lkYCAtIFRoZSBJRCBvZiB0aGUgZ2FtZQoqIGBwbGF5ZXJgIC0gQWRkcmVzcyBvZiB0aGUgcGxheWVyIG1ha2luZyB0aGUgZ3Vlc3MKKiBgZ3Vlc3NgIC0gVGhlIGd1ZXNzZWQgbnVtYmVyICgxLTEwKQAAAAAKbWFrZV9ndWVzcwAAAAAAAwAAAAAAAAAHZ2FtZV9pZAAAAAAEAAAAAAAAAAZwbGF5ZXIAAAAAABMAAAAAAAAABWd1ZXNzAAAAAAAABAAAAAEAAAPpAAAD7QAAAAAAAAAD",
         "AAAAAAAAAjpTdGFydCBhIG5ldyBnYW1lIGJldHdlZW4gdHdvIHBsYXllcnMgd2l0aCBGUCB3YWdlcnMuClRoaXMgY3JlYXRlcyBhIHNlc3Npb24gaW4gQmxlbmRpenphcmQgYW5kIGxvY2tzIEZQIGJlZm9yZSBzdGFydGluZyB0aGUgZ2FtZS4KCioqQ1JJVElDQUw6KiogVGhpcyBtZXRob2QgcmVxdWlyZXMgYXV0aG9yaXphdGlvbiBmcm9tIFRISVMgY29udHJhY3QgKG5vdCBwbGF5ZXJzKS4KQmxlbmRpenphcmQgd2lsbCBjYWxsIGBnYW1lX2lkLnJlcXVpcmVfYXV0aCgpYCB3aGljaCBjaGVja3MgdGhpcyBjb250cmFjdCdzIGFkZHJlc3MuCgojIEFyZ3VtZW50cwoqIGBzZXNzaW9uX2lkYCAtIFVuaXF1ZSBzZXNzaW9uIGlkZW50aWZpZXIgKHUzMikKKiBgcGxheWVyMWAgLSBBZGRyZXNzIG9mIGZpcnN0IHBsYXllcgoqIGBwbGF5ZXIyYCAtIEFkZHJlc3Mgb2Ygc2Vjb25kIHBsYXllcgoqIGBwbGF5ZXIxX3dhZ2VyYCAtIEZQIGFtb3VudCBwbGF5ZXIxIGlzIHdhZ2VyaW5nCiogYHBsYXllcjJfd2FnZXJgIC0gRlAgYW1vdW50IHBsYXllcjIgaXMgd2FnZXJpbmcKCiMgUmV0dXJucwoqIGB1MzJgIC0gVGhlIGdhbWUgSUQAAAAAAApzdGFydF9nYW1lAAAAAAAFAAAAAAAAAApzZXNzaW9uX2lkAAAAAAAEAAAAAAAAAAdwbGF5ZXIxAAAAABMAAAAAAAAAB3BsYXllcjIAAAAAEwAAAAAAAAANcGxheWVyMV93YWdlcgAAAAAAAAsAAAAAAAAADXBsYXllcjJfd2FnZXIAAAAAAAALAAAAAQAAA+kAAAAEAAAAAw==",
         "AAAAAAAAAK5Jbml0aWFsaXplIHRoZSBjb250cmFjdCB3aXRoIEJsZW5kaXp6YXJkIGFkZHJlc3MgYW5kIGFkbWluCgojIEFyZ3VtZW50cwoqIGBhZG1pbmAgLSBBZG1pbiBhZGRyZXNzIChjYW4gdXBncmFkZSBjb250cmFjdCkKKiBgYmxlbmRpenphcmRgIC0gQWRkcmVzcyBvZiB0aGUgQmxlbmRpenphcmQgY29udHJhY3QAAAAAAA1fX2NvbnN0cnVjdG9yAAAAAAAAAgAAAAAAAAAFYWRtaW4AAAAAAAATAAAAAAAAAAtibGVuZGl6emFyZAAAAAATAAAAAA==",
-        "AAAAAAAAATJSZXZlYWwgdGhlIHdpbm5lciBvZiB0aGUgZ2FtZSBhbmQgc3VibWl0IG91dGNvbWUgdG8gQmxlbmRpenphcmQuCkNhbiBvbmx5IGJlIGNhbGxlZCBhZnRlciBib3RoIHBsYXllcnMgaGF2ZSBtYWRlIHRoZWlyIGd1ZXNzZXMuClRoaXMgZW5kcyB0aGUgQmxlbmRpenphcmQgc2Vzc2lvbiwgdW5sb2NrcyBGUCwgYW5kIHVwZGF0ZXMgZmFjdGlvbiBzdGFuZGluZ3MuCgojIEFyZ3VtZW50cwoqIGBnYW1lX2lkYCAtIFRoZSBJRCBvZiB0aGUgZ2FtZQoKIyBSZXR1cm5zCiogYEFkZHJlc3NgIC0gQWRkcmVzcyBvZiB0aGUgd2lubmluZyBwbGF5ZXIAAAAAAA1yZXZlYWxfd2lubmVyAAAAAAAAAQAAAAAAAAAHZ2FtZV9pZAAAAAAEAAAAAQAAA+kAAAATAAAAAw==" ]),
+        "AAAAAAAAATJSZXZlYWwgdGhlIHdpbm5lciBvZiB0aGUgZ2FtZSBhbmQgc3VibWl0IG91dGNvbWUgdG8gQmxlbmRpenphcmQuCkNhbiBvbmx5IGJlIGNhbGxlZCBhZnRlciBib3RoIHBsYXllcnMgaGF2ZSBtYWRlIHRoZWlyIGd1ZXNzZXMuClRoaXMgZW5kcyB0aGUgQmxlbmRpenphcmQgc2Vzc2lvbiwgdW5sb2NrcyBGUCwgYW5kIHVwZGF0ZXMgZmFjdGlvbiBzdGFuZGluZ3MuCgojIEFyZ3VtZW50cwoqIGBnYW1lX2lkYCAtIFRoZSBJRCBvZiB0aGUgZ2FtZQoKIyBSZXR1cm5zCiogYEFkZHJlc3NgIC0gQWRkcmVzcyBvZiB0aGUgd2lubmluZyBwbGF5ZXIAAAAAAA1yZXZlYWxfd2lubmVyAAAAAAAAAQAAAAAAAAAHZ2FtZV9pZAAAAAAEAAAAAQAAA+kAAAATAAAAAw==",
+        "AAAAAAAAAGZHZXQgdGhlIGN1cnJlbnQgQmxlbmRpenphcmQgY29udHJhY3QgYWRkcmVzcwoKIyBSZXR1cm5zCiogYEFkZHJlc3NgIC0gVGhlIEJsZW5kaXp6YXJkIGNvbnRyYWN0IGFkZHJlc3MAAAAAAA9nZXRfYmxlbmRpenphcmQAAAAAAAAAAAEAAAPpAAAAEwAAAAM=",
+        "AAAAAAAAAKJTZXQgYSBuZXcgQmxlbmRpenphcmQgY29udHJhY3QgYWRkcmVzcwoKIyBBcmd1bWVudHMKKiBgbmV3X2JsZW5kaXp6YXJkYCAtIFRoZSBuZXcgQmxlbmRpenphcmQgY29udHJhY3QgYWRkcmVzcwoKIyBFcnJvcnMKKiBgTm90QWRtaW5gIC0gSWYgY2FsbGVyIGlzIG5vdCB0aGUgYWRtaW4AAAAAAA9zZXRfYmxlbmRpenphcmQAAAAAAQAAAAAAAAAPbmV3X2JsZW5kaXp6YXJkAAAAABMAAAABAAAD6QAAA+0AAAAAAAAAAw==" ]),
       options
     )
   }
   public readonly fromJSON = {
     upgrade: this.txFromJSON<Result<void>>,
         get_game: this.txFromJSON<Result<Game>>,
+        get_admin: this.txFromJSON<Result<string>>,
+        set_admin: this.txFromJSON<Result<void>>,
         make_guess: this.txFromJSON<Result<void>>,
         start_game: this.txFromJSON<Result<u32>>,
-        reveal_winner: this.txFromJSON<Result<string>>
+        reveal_winner: this.txFromJSON<Result<string>>,
+        get_blendizzard: this.txFromJSON<Result<string>>,
+        set_blendizzard: this.txFromJSON<Result<void>>
   }
 }

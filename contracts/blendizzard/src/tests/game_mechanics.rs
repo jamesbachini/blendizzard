@@ -153,11 +153,11 @@ fn test_end_game_spends_fp_and_updates_faction_standings() {
         player2: player2.clone(),
         winner: true, // player1 wins
     };
-    blendizzard.end_game(&game_contract, &session_id, &proof, &outcome);
+    blendizzard.end_game(&proof, &outcome);
 
     // Verify FP spending (both players lose their wagers)
     let p1_final = blendizzard.get_epoch_player(&player1);
-    let p2_final = blendizzard.get_epoch_player(&player2);
+    let _p2_final = blendizzard.get_epoch_player(&player2);
 
     // Winner's available_fp should stay the same (they don't get FP back)
     assert_eq!(
@@ -268,7 +268,7 @@ fn test_session_stores_epoch_id() {
     };
 
     // This should succeed because we're in the same epoch
-    blendizzard.end_game(&game_contract, &session_id, &proof, &outcome);
+    blendizzard.end_game(&proof, &outcome);
 
     // Verify game completed
     let p1_epoch = blendizzard.get_epoch_player(&player1);

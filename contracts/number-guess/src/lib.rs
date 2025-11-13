@@ -10,8 +10,8 @@
 //! Blendizzard contract. Games cannot be started or completed without FP involvement.
 
 use soroban_sdk::{
-    contract, contractclient, contracterror, contractevent, contractimpl, contracttype, Address,
-    Bytes, BytesN, Env,
+    contract, contractclient, contracterror, contractimpl, contracttype, Address, Bytes, BytesN,
+    Env,
 };
 
 // Import Blendizzard contract interface
@@ -28,7 +28,7 @@ pub trait Blendizzard {
         player2_wager: i128,
     );
 
-    fn end_game(env: Env, game_id: Address, session_id: u32, proof: Bytes, outcome: GameOutcome);
+    fn end_game(env: Env, proof: Bytes, outcome: GameOutcome);
 }
 
 // GameOutcome must match Blendizzard's definition
@@ -62,29 +62,15 @@ pub enum Error {
 }
 
 // ============================================================================
-// Events
+// Events (REMOVED)
 // ============================================================================
-
-#[contractevent]
-pub struct GameStartedEvent {
-    pub game_id: u32,
-    pub player1: Address,
-    pub player2: Address,
-}
-
-#[contractevent]
-pub struct GuessMadeEvent {
-    pub game_id: u32,
-    pub player: Address,
-    pub guess: u32,
-}
-
-#[contractevent]
-pub struct WinnerRevealedEvent {
-    pub game_id: u32,
-    pub winner: Address,
-    pub winning_number: u32,
-}
+//
+// All events have been removed to avoid duplication with Blendizzard events.
+// Game lifecycle is tracked through Blendizzard's GameStarted and GameEnded events.
+// Game-specific state (guesses, winning_number) can be queried via get_game().
+//
+// This keeps the event stream clean and makes Blendizzard the single source of
+// truth for game lifecycle monitoring.
 
 // ============================================================================
 // Data Types
@@ -235,13 +221,7 @@ impl NumberGuessContract {
             .temporary()
             .extend_ttl(&game_key, GAME_TTL_LEDGERS, GAME_TTL_LEDGERS);
 
-        // Emit event
-        GameStartedEvent {
-            game_id,
-            player1,
-            player2,
-        }
-        .publish(&env);
+        // Event emitted by Blendizzard contract (GameStarted)
 
         Ok(game_id)
     }
@@ -292,13 +272,7 @@ impl NumberGuessContract {
         // Store updated game in temporary storage
         env.storage().temporary().set(&key, &game);
 
-        // Emit event
-        GuessMadeEvent {
-            game_id,
-            player,
-            guess,
-        }
-        .publish(&env);
+        // No event emitted - game state can be queried via get_game()
 
         Ok(())
     }
@@ -379,20 +353,8 @@ impl NumberGuessContract {
 
         // Call Blendizzard to end the session
         // This unlocks FP and updates faction standings
-        blendizzard.end_game(
-            &env.current_contract_address(),
-            &game.session_id,
-            &proof,
-            &outcome,
-        );
-
-        // Emit event
-        WinnerRevealedEvent {
-            game_id,
-            winner: winner.clone(),
-            winning_number: game.winning_number,
-        }
-        .publish(&env);
+        // Event emitted by Blendizzard contract (GameEnded)
+        blendizzard.end_game(&proof, &outcome);
 
         Ok(winner)
     }
@@ -415,6 +377,70 @@ impl NumberGuessContract {
     // ========================================================================
     // Admin Functions
     // ========================================================================
+
+    /// Get the current admin address
+    ///
+    /// # Returns
+    /// * `Address` - The admin address
+    pub fn get_admin(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
+    }
+
+    /// Set a new admin address
+    ///
+    /// # Arguments
+    /// * `new_admin` - The new admin address
+    ///
+    /// # Errors
+    /// * `NotAdmin` - If caller is not the current admin
+    pub fn set_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        Ok(())
+    }
+
+    /// Get the current Blendizzard contract address
+    ///
+    /// # Returns
+    /// * `Address` - The Blendizzard contract address
+    pub fn get_blendizzard(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::BlendizzardAddress)
+            .ok_or(Error::NotInitialized)
+    }
+
+    /// Set a new Blendizzard contract address
+    ///
+    /// # Arguments
+    /// * `new_blendizzard` - The new Blendizzard contract address
+    ///
+    /// # Errors
+    /// * `NotAdmin` - If caller is not the admin
+    pub fn set_blendizzard(env: Env, new_blendizzard: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::BlendizzardAddress, &new_blendizzard);
+
+        Ok(())
+    }
 
     /// Update the contract WASM hash (upgrade contract)
     ///

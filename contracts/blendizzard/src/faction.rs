@@ -1,7 +1,7 @@
 use soroban_sdk::{Address, Env};
 
 use crate::errors::Error;
-use crate::events::{emit_faction_locked, emit_faction_selected};
+use crate::events::emit_faction_selected;
 use crate::storage;
 use crate::types::{EpochPlayer, Faction};
 
@@ -110,8 +110,8 @@ pub(crate) fn lock_epoch_faction(
     // Save epoch player data
     storage::set_epoch_player(env, current_epoch, player, &epoch_player);
 
-    // Emit event
-    emit_faction_locked(env, player, current_epoch, selected_faction);
+    // No event emitted - faction locking is internal state management
+    // GameStarted event already indicates which players are in the game
 
     Ok(selected_faction)
 }

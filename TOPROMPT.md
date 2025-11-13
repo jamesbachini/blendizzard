@@ -1,2 +1,3 @@
-* Consider having opponent wager added to self wager as the total FP contributed to faction
-* We mix the term Player and Player it seems. We should likely be consistent with Player right? Or is there a good reason to keep both nomenclatures?
+MAYBE
+* Consider having loser fp added to winners faction_fp
+* Consider having loser fp added to winners available_fp

@@ -726,10 +726,10 @@ fn test_full_epoch_cycle_with_all_real_contracts() {
             // For integration test purposes, we'll accept either success or specific errors
             // and verify the state appropriately
 
-            // Just verify epoch didn't cycle if it failed
-            let current_epoch = blendizzard.get_epoch(&None);
+            // Verify epoch didn't cycle - check that current epoch is still 0
+            let current_epoch_num = blendizzard.get_current_epoch();
             assert_eq!(
-                current_epoch.epoch_number, 0,
+                current_epoch_num, 0,
                 "Epoch should not have cycled on error"
             );
 
@@ -738,12 +738,15 @@ fn test_full_epoch_cycle_with_all_real_contracts() {
         }
     }
 
-    // Get new epoch
-    let new_epoch = blendizzard.get_epoch(&None);
-    assert_eq!(new_epoch.epoch_number, 1, "Should have advanced to epoch 1");
+    // Verify epoch cycled to epoch 1
+    let current_epoch_num = blendizzard.get_current_epoch();
+    assert_eq!(current_epoch_num, 1, "Should have advanced to epoch 1");
+
+    // Get new epoch (epoch 1)
+    let _new_epoch = blendizzard.get_epoch(&1);
 
     // Get old epoch info
-    let old_epoch = blendizzard.get_epoch(&Some(0));
+    let old_epoch = blendizzard.get_epoch(&0);
     assert!(old_epoch.is_finalized, "Epoch 0 should be finalized");
 
     // Verify BLND was claimed from fee-vault

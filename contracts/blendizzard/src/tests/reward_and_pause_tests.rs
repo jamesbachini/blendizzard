@@ -276,7 +276,7 @@ fn test_end_game_nonexistent_session() {
         winner: true,
     };
 
-    let result = blendizzard.try_end_game(&game, &session, &proof, &outcome);
+    let result = blendizzard.try_end_game(&proof, &outcome);
     assert!(result.is_err(), "Should fail with nonexistent session");
 }
 
@@ -572,16 +572,17 @@ fn test_get_epoch_for_current_and_nonexistent() {
     let (_game, _vault, _mock_vault, blendizzard, _usdc) = setup_complete_game_env(&env);
 
     // Get current epoch (epoch 0)
-    let current_epoch = blendizzard.get_epoch(&None);
-    assert_eq!(current_epoch.epoch_number, 0);
-    assert!(!current_epoch.is_finalized);
+    let current_epoch_num = blendizzard.get_current_epoch();
+    assert_eq!(current_epoch_num, 0, "Should be in epoch 0");
 
-    // Get specific epoch (0)
-    let epoch0 = blendizzard.get_epoch(&Some(0));
-    assert_eq!(epoch0.epoch_number, 0);
+    let current_epoch_info = blendizzard.get_epoch(&current_epoch_num);
+    assert!(!current_epoch_info.is_finalized);
+
+    // Get specific epoch (0) - should return same as current
+    let epoch0 = blendizzard.get_epoch(&0);
 
     // Try to get nonexistent epoch (999)
-    let result = blendizzard.try_get_epoch(&Some(999));
+    let result = blendizzard.try_get_epoch(&999);
     assert!(result.is_err(), "Should fail for nonexistent epoch");
 }
 
@@ -618,10 +619,10 @@ fn test_get_faction_standings() {
         player2: player2.clone(),
         winner: true, // player1 wins
     };
-    blendizzard.end_game(&game, &session, &proof, &outcome);
+    blendizzard.end_game(&proof, &outcome);
 
     // Get faction standings for epoch 0 via get_epoch
-    let epoch = blendizzard.get_epoch(&Some(0));
+    let epoch = blendizzard.get_epoch(&0);
     let standings = epoch.faction_standings;
 
     // Faction 0 (WholeNoodle) should have player1's contribution

@@ -1,8 +1,6 @@
 use soroban_sdk::{contracttype, Address, Env};
 
-use crate::types::{
-    Config, EpochInfo, EpochPlayer, EpochPlayerV0, GameSession, Player, PlayerV0, PlayerV1,
-};
+use crate::types::{Config, EpochInfo, EpochPlayer, GameSession, Player};
 
 // ============================================================================
 // Storage Keys
@@ -29,18 +27,8 @@ pub enum DataKey {
     /// Pause state - singleton (Instance storage)
     Paused,
 
-    /// OLD - Player persistent data (for migration only - DO NOT USE)
-    /// This variant exists only to support migration from old storage keys
-    #[deprecated]
-    User(Address),
-
     /// Player persistent data - Player(player_address) -> Player (Persistent storage)
     Player(Address),
-
-    /// OLD - Player epoch-specific data (for migration only - DO NOT USE)
-    /// This variant exists only to support migration from old storage keys
-    #[deprecated]
-    EpochUser(u32, Address),
 
     /// Player epoch-specific data - EpochPlayer(epoch_number, player_address) -> EpochPlayer (Temporary storage)
     EpochPlayer(u32, Address),
@@ -124,141 +112,6 @@ pub(crate) fn set_player(env: &Env, player: &Address, data: &Player) {
     extend_player_ttl(env, player);
 }
 
-/// Migrate player data from old formats to current format
-///
-/// Handles migration from:
-/// - Old storage key (DataKey::Player) to new key (DataKey::Player)
-/// - V0 (pre-Nov 10): selected_faction, total_deposited, deposit_timestamp
-/// - V1 (Nov 10-12): selected_faction, deposit_timestamp, last_epoch_balance
-/// - V2 (current): selected_faction, time_multiplier_start, last_epoch_balance
-///
-/// This reads old storage keys and struct formats, deletes them, and writes back the current format.
-/// Returns true if migration was performed, false if player doesn't exist or is already migrated.
-pub(crate) fn migrate_player_storage(env: &Env, player: &Address) -> bool {
-    let new_key = DataKey::Player(player.clone());
-    let old_key = DataKey::User(player.clone());
-
-    // Try to read as current format (V2) with new key first
-    if let Some(_) = get_player(env, player) {
-        // Already in new format with new key, no migration needed
-        return false;
-    }
-
-    // Try to read from old key as V1 format (deposit_timestamp + last_epoch_balance)
-    let v1_data: Option<PlayerV1> = env.storage().persistent().get(&old_key);
-    if let Some(old) = v1_data {
-        // Convert V1 to V2
-        let new_data = Player {
-            selected_faction: old.selected_faction,
-            time_multiplier_start: old.deposit_timestamp, // Field rename
-            last_epoch_balance: old.last_epoch_balance,
-        };
-
-        // Delete old key
-        env.storage().persistent().remove(&old_key);
-
-        // Write back with new key and format
-        set_player(env, player, &new_data);
-        return true;
-    }
-
-    // Try to read from old key as V0 format (total_deposited + deposit_timestamp)
-    let v0_data: Option<PlayerV0> = env.storage().persistent().get(&old_key);
-    if let Some(old) = v0_data {
-        // Convert V0 to V2
-        let new_data = Player {
-            selected_faction: old.selected_faction,
-            time_multiplier_start: old.deposit_timestamp, // Field rename
-            last_epoch_balance: 0, // V0 didn't track this, set to 0 (no previous epoch)
-        };
-
-        // Delete old key
-        env.storage().persistent().remove(&old_key);
-
-        // Write back with new key and format
-        set_player(env, player, &new_data);
-        return true;
-    }
-
-    // Try to read from new key as V2 format but check if it needs schema fix
-    // This handles the edge case where key was already migrated but schema wasn't
-    let new_key_v1: Option<PlayerV1> = env.storage().persistent().get(&new_key);
-    if let Some(old) = new_key_v1 {
-        let new_data = Player {
-            selected_faction: old.selected_faction,
-            time_multiplier_start: old.deposit_timestamp,
-            last_epoch_balance: old.last_epoch_balance,
-        };
-        env.storage().persistent().remove(&new_key);
-        set_player(env, player, &new_data);
-        return true;
-    }
-
-    // Player doesn't exist in any format
-    false
-}
-
-/// Migrate epoch-specific player data from old storage key to new one
-///
-/// Handles migration from:
-/// - Old storage key (DataKey::EpochUser) to new key (DataKey::EpochPlayer)
-/// - V0 (pre-Nov 13): EpochPlayer with locked_fp field
-/// - V1 (current): EpochPlayer without locked_fp field
-///
-/// Returns true if migration was performed, false if already migrated or doesn't exist.
-pub(crate) fn migrate_epoch_player_storage(env: &Env, epoch: u32, player: &Address) -> bool {
-    let new_key = DataKey::EpochPlayer(epoch, player.clone());
-    let old_key = DataKey::EpochUser(epoch, player.clone());
-
-    // Check if already migrated to new format (exists in new key with new format)
-    let new_format_check: Option<EpochPlayer> = env.storage().temporary().get(&new_key);
-    if new_format_check.is_some() {
-        return false;
-    }
-
-    // Try to read from old key as V0 format (with locked_fp)
-    let v0_data: Option<EpochPlayerV0> = env.storage().temporary().get(&old_key);
-    if let Some(old) = v0_data {
-        // Convert V0 to V1 (drop locked_fp field)
-        let new_data = EpochPlayer {
-            epoch_faction: old.epoch_faction,
-            epoch_balance_snapshot: old.epoch_balance_snapshot,
-            available_fp: old.available_fp,
-            total_fp_contributed: old.total_fp_contributed,
-        };
-
-        // Write to new key
-        env.storage().temporary().set(&new_key, &new_data);
-        extend_epoch_player_ttl(env, epoch, player);
-
-        // Delete old key
-        env.storage().temporary().remove(&old_key);
-
-        return true;
-    }
-
-    // Try to read from new key as V0 format (with locked_fp) - in case it was partially migrated
-    let v0_new_key_data: Option<EpochPlayerV0> = env.storage().temporary().get(&new_key);
-    if let Some(old) = v0_new_key_data {
-        // Convert V0 to V1 (drop locked_fp field)
-        let new_data = EpochPlayer {
-            epoch_faction: old.epoch_faction,
-            epoch_balance_snapshot: old.epoch_balance_snapshot,
-            available_fp: old.available_fp,
-            total_fp_contributed: old.total_fp_contributed,
-        };
-
-        // Overwrite with new format
-        env.storage().temporary().set(&new_key, &new_data);
-        extend_epoch_player_ttl(env, epoch, player);
-
-        return true;
-    }
-
-    // Data doesn't exist in either key or format
-    false
-}
-
 /// Check if player exists
 #[allow(dead_code)]
 pub(crate) fn has_player(env: &Env, player: &Address) -> bool {
@@ -269,30 +122,12 @@ pub(crate) fn has_player(env: &Env, player: &Address) -> bool {
 
 /// Get epoch-specific player data
 pub(crate) fn get_epoch_player(env: &Env, epoch: u32, player: &Address) -> Option<EpochPlayer> {
-    let new_key = DataKey::EpochPlayer(epoch, player.clone());
-
-    // Try new key with new format (V1 - without locked_fp)
-    let result: Option<EpochPlayer> = env.storage().temporary().get(&new_key);
+    let key = DataKey::EpochPlayer(epoch, player.clone());
+    let result: Option<EpochPlayer> = env.storage().temporary().get(&key);
     if result.is_some() {
         extend_epoch_player_ttl(env, epoch, player);
-        return result;
     }
-
-    // Try old key (DataKey::EpochUser) with V0 format (with locked_fp)
-    let old_key = DataKey::EpochUser(epoch, player.clone());
-    let v0_result: Option<EpochPlayerV0> = env.storage().temporary().get(&old_key);
-    if let Some(v0_data) = v0_result {
-        extend_epoch_player_ttl(env, epoch, player);
-        // Convert on the fly (drop locked_fp)
-        return Some(EpochPlayer {
-            epoch_faction: v0_data.epoch_faction,
-            epoch_balance_snapshot: v0_data.epoch_balance_snapshot,
-            available_fp: v0_data.available_fp,
-            total_fp_contributed: v0_data.total_fp_contributed,
-        });
-    }
-
-    None
+    result
 }
 
 /// Set epoch-specific player data

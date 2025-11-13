@@ -16,7 +16,11 @@
 //! - Soroswap: DEX for BLND → USDC conversion
 //! - soroban-fixed-point-math: Safe fixed-point arithmetic
 
-use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{
+    Address, Bytes, BytesN, Env, Val, Vec, auth::{
+        Context, CustomAccountInterface,
+    }, contract, contractimpl, crypto::Hash, vec
+};
 
 mod errors;
 mod events;
@@ -249,57 +253,6 @@ impl Blendizzard {
     }
 
     // ========================================================================
-    // Migration Functions
-    // ========================================================================
-
-    /// Migration: Update Player struct from old formats to current format
-    ///
-    /// This migration fixes deserialization errors caused by Player struct schema changes:
-    /// - V0 (pre-Nov 10): Had `total_deposited` field instead of `last_epoch_balance`
-    /// - V1 (Nov 10-12): Had `deposit_timestamp` field instead of `time_multiplier_start`
-    /// - V2 (current): Uses `time_multiplier_start` and `last_epoch_balance`
-    ///
-    /// The migration reads old formats, deletes them, and writes back the current format.
-    ///
-    /// # Usage
-    /// Call this for each player address that needs migration. This is typically called:
-    /// - By players themselves when they encounter deserialization errors
-    /// - By admin for known active players
-    ///
-    /// # Arguments
-    /// * `player` - Player address to migrate
-    ///
-    /// # Returns
-    /// * `true` if migration was performed (player had V0 or V1 data)
-    /// * `false` if player data doesn't exist or is already in V2 format
-    pub fn migrate_player(env: Env, player: Address) -> bool {
-        storage::migrate_player_storage(&env, &player)
-    }
-
-    /// Migration: Update EpochPlayer storage key from old format to new format
-    ///
-    /// This migration handles the storage key rename from DataKey::EpochUser to DataKey::EpochPlayer.
-    /// The EpochPlayer struct itself hasn't changed, only the storage key name changed
-    /// as part of the user→player terminology standardization.
-    ///
-    /// # Usage
-    /// Call this for each (epoch, player) pair that might have old data. Typically called:
-    /// - By players when they encounter issues claiming rewards or checking epoch data
-    /// - By admin for active epochs with known players
-    /// - Can be called proactively for the current epoch
-    ///
-    /// # Arguments
-    /// * `epoch` - Epoch number to migrate
-    /// * `player` - Player address to migrate
-    ///
-    /// # Returns
-    /// * `true` if migration was performed (found data in old DataKey::EpochUser)
-    /// * `false` if data doesn't exist or is already migrated to DataKey::EpochPlayer
-    pub fn migrate_epoch_player(env: Env, epoch: u32, player: Address) -> bool {
-        storage::migrate_epoch_player_storage(&env, epoch, &player)
-    }
-
-    // ========================================================================
     // Game Registry
     // ========================================================================
 
@@ -423,6 +376,7 @@ impl Blendizzard {
     /// * `GameNotWhitelisted` - If game_id is not approved
     /// * `SessionAlreadyExists` - If session_id already exists
     /// * `InvalidAmount` - If wagers are <= 0
+    /// * `PlayerNotFound` - If players don't exist
     /// * `InsufficientFactionPoints` - If players don't have enough fp
     /// * `ContractPaused` - If contract is in emergency pause mode
     pub fn start_game(
@@ -457,28 +411,31 @@ impl Blendizzard {
     /// * `InvalidSessionState` - If session is not Pending
     /// * `InvalidGameOutcome` - If outcome data doesn't match session
     /// * `ProofVerificationFailed` - If ZK proof is invalid
-    pub fn end_game(
-        env: Env,
-        game_id: Address,
-        session_id: u32,
-        proof: Bytes,
-        outcome: GameOutcome,
-    ) -> Result<(), Error> {
-        game::end_game(&env, &game_id, session_id, &proof, &outcome)
+    pub fn end_game(env: Env, proof: Bytes, outcome: GameOutcome) -> Result<(), Error> {
+        game::end_game(&env, &proof, &outcome)
     }
 
     // ========================================================================
     // Epoch Management
     // ========================================================================
 
-    /// Get epoch information
+    /// Get the current epoch number
     ///
-    /// Returns current epoch if no number specified, otherwise the specified epoch.
+    /// # Returns
+    /// The current epoch number
+    pub fn get_current_epoch(env: Env) -> u32 {
+        storage::get_current_epoch(&env)
+    }
+
+    /// Get epoch information for a specific epoch
+    ///
+    /// # Arguments
+    /// * `epoch` - The epoch number to retrieve
     ///
     /// # Errors
     /// * `EpochNotFinalized` - If requested epoch doesn't exist
-    pub fn get_epoch(env: Env, epoch: Option<u32>) -> Result<EpochInfo, Error> {
-        epoch::get_epoch(&env, epoch)
+    pub fn get_epoch(env: Env, epoch: u32) -> Result<EpochInfo, Error> {
+        storage::get_epoch(&env, epoch).ok_or(Error::EpochNotFinalized)
     }
 
     /// Cycle to the next epoch
@@ -522,6 +479,23 @@ impl Blendizzard {
     pub fn claim_epoch_reward(env: Env, player: Address, epoch: u32) -> Result<i128, Error> {
         storage::require_not_paused(&env)?;
         rewards::claim_epoch_reward(&env, &player, epoch)
+    }
+}
+
+#[contractimpl]
+impl CustomAccountInterface for Blendizzard {
+    type Error = Error;
+    type Signature = Option<Val>;
+
+    fn __check_auth(
+        env: Env,
+        _signature_payload: Hash<32>,
+        _signature: Option<Val>,
+        _auth_contexts: Vec<Context>,
+    ) -> Result<(), Error> {
+        let admin = storage::get_admin(&env);
+        admin.require_auth_for_args(vec![&env]); // TODO, make this more secure by checking the signature payload and signature
+        Ok(())
     }
 }
 

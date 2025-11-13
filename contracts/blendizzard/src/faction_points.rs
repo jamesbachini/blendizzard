@@ -237,6 +237,7 @@ pub(crate) fn initialize_epoch_fp(
 /// * `current_epoch` - Current epoch number
 ///
 /// # Errors
+/// * `PlayerNotFound` - If player doesn't exist
 /// * `InsufficientFactionPoints` - If player doesn't have enough available FP
 pub(crate) fn lock_fp(
     env: &Env,
@@ -244,8 +245,8 @@ pub(crate) fn lock_fp(
     amount: i128,
     current_epoch: u32,
 ) -> Result<(), Error> {
-    let mut epoch_player = storage::get_epoch_player(env, current_epoch, player)
-        .ok_or(Error::InsufficientFactionPoints)?;
+    let mut epoch_player =
+        storage::get_epoch_player(env, current_epoch, player).ok_or(Error::PlayerNotFound)?;
 
     // Check if player has enough available FP
     if epoch_player.available_fp < amount {

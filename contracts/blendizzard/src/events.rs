@@ -53,13 +53,12 @@ pub struct FactionSelected {
     pub faction: u32,
 }
 
-#[contractevent]
-pub struct FactionLocked {
-    #[topic]
-    pub player: Address,
-    pub epoch: u32,
-    pub faction: u32,
-}
+// FactionLocked event REMOVED
+// Rationale: Internal state change that happens during start_game()
+// - Not a direct user action (faction selection already has FactionSelected event)
+// - Causes 3 events per start_game() call (1 GameStarted + 2 FactionLocked)
+// - Redundant: players are in GameStarted, factions queryable via get_epoch_player()
+// - Clutters event stream with implementation details
 
 // ============================================================================
 // Game Events
@@ -150,16 +149,6 @@ pub(crate) fn emit_config_updated(env: &Env, admin: &Address) {
 pub(crate) fn emit_faction_selected(env: &Env, player: &Address, faction: u32) {
     FactionSelected {
         player: player.clone(),
-        faction,
-    }
-    .publish(env);
-}
-
-/// Emit faction locked event (for epoch)
-pub(crate) fn emit_faction_locked(env: &Env, player: &Address, epoch: u32, faction: u32) {
-    FactionLocked {
-        player: player.clone(),
-        epoch,
         faction,
     }
     .publish(env);

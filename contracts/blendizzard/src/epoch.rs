@@ -14,29 +14,6 @@ use crate::types::EpochInfo;
 // Epoch Management
 // ============================================================================
 
-/// Get epoch information
-///
-/// Returns the current epoch if no number specified, otherwise the specified epoch.
-///
-/// From PLAN.md:
-/// "Get the current epoch if no number specified, otherwise the specified number
-///  Return the epoch number and faction standings"
-///
-/// # Arguments
-/// * `env` - Contract environment
-/// * `epoch` - Optional epoch number. If None, returns current epoch
-///
-/// # Returns
-/// Epoch information including number, timing, standings, and rewards
-///
-/// # Errors
-/// * `EpochNotFinalized` - If requested epoch doesn't exist
-pub(crate) fn get_epoch(env: &Env, epoch: Option<u32>) -> Result<EpochInfo, Error> {
-    let epoch_num = epoch.unwrap_or_else(|| storage::get_current_epoch(env));
-
-    storage::get_epoch(env, epoch_num).ok_or(Error::EpochNotFinalized)
-}
-
 /// Cycle to the next epoch
 ///
 /// From PLAN.md:
@@ -111,7 +88,6 @@ pub(crate) fn cycle_epoch(env: &Env) -> Result<u32, Error> {
     let config = storage::get_config(env);
 
     let next_epoch = EpochInfo {
-        epoch_number: next_epoch_num,
         start_time: current_time,
         end_time: current_time + config.epoch_duration,
         faction_standings: Map::new(env),
@@ -196,67 +172,64 @@ fn withdraw_and_convert_rewards(env: &Env) -> Result<i128, Error> {
 
     // Step 1: Capture pre-swap USDC balance
     // Following blend-together pattern: only count delta from this operation
+    let blnd_client = token::Client::new(&env, &config.blnd_token);
     let usdc_client = token::Client::new(env, &config.usdc_token);
     let pre_usdc_balance = usdc_client.balance(&current_contract);
 
     // Step 2: Get available BLND from fee-vault admin balance
     let vault_client = FeeVaultClient::new(env, &config.fee_vault);
-    let blnd_balance = vault_client.get_underlying_admin_balance();
+    let admin_balance = vault_client.get_underlying_admin_balance();
 
     // Step 3: Withdraw BLND from fee-vault admin balance (contract is admin)
-    let mut total_blnd: i128 = 0;
-    if blnd_balance > 0 {
-        let blnd_from_fees = vault_client.admin_withdraw(&blnd_balance);
-        total_blnd += blnd_from_fees;
+    if admin_balance > 0 {
+        vault_client.admin_withdraw(&admin_balance);
     }
 
     // Step 4: Claim BLND emissions from Blend pool
     // CRITICAL: This claims BLND token emissions that accrue to the vault from the Blend pool
     // Emissions are separate from admin fees and MUST be claimed explicitly
     // Without this, we're leaving significant BLND rewards unclaimed!
-    let emissions_claimed =
-        vault_client.claim_emissions(&config.reserve_token_ids, &current_contract);
-    total_blnd += emissions_claimed;
+    vault_client.claim_emissions(&config.reserve_token_ids, &current_contract);
+    
+    let total_blnd = blnd_client.balance(&current_contract);
 
     // Early return if no BLND available from either source
-    if total_blnd <= 0 {
-        return Ok(0);
+    if total_blnd > 0 {
+        // Step 5: Authorize contract to transfer BLND tokens to router
+        // Critical: Without this, the BLND token contract will reject the transfer
+        let router_client = SoroswapRouterClient::new(env, &config.soroswap_router);
+
+        // Get the router pair address for BLND/USDC liquidity pool
+        // Note: Using non-try version as generated client handles Result internally
+        let router_pair = router_client.router_pair_for(&config.blnd_token, &config.usdc_token);
+
+        // Authorize the BLND token contract to transfer from this contract to router pair
+        env.authorize_as_current_contract(vec![
+            env,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: config.blnd_token.clone(),
+                    fn_name: Symbol::new(env, "transfer"),
+                    args: (current_contract.clone(), router_pair, total_blnd).into_val(env),
+                },
+                sub_invocations: vec![env],
+            }),
+        ]);
+
+        // Step 6: Execute swap (BLND → USDC)
+        let path: Vec<Address> = vec![env, config.blnd_token.clone(), config.usdc_token.clone()];
+        let deadline = env.ledger().timestamp() + 300; // 5 min deadline
+
+        // Execute swap (accepting any output amount)
+        // Soroban has protocol-level frontrunning protection via authorization framework
+        router_client.swap_exact_tokens_for_tokens(
+            &total_blnd,
+            &0, // No minimum - trust Soroswap pricing
+            &path,
+            &current_contract, // Send USDC to this contract
+            &deadline,
+        );
     }
-
-    // Step 5: Authorize contract to transfer BLND tokens to router
-    // Critical: Without this, the BLND token contract will reject the transfer
-    let router_client = SoroswapRouterClient::new(env, &config.soroswap_router);
-
-    // Get the router pair address for BLND/USDC liquidity pool
-    // Note: Using non-try version as generated client handles Result internally
-    let router_pair = router_client.router_pair_for(&config.blnd_token, &config.usdc_token);
-
-    // Authorize the BLND token contract to transfer from this contract to router pair
-    env.authorize_as_current_contract(vec![
-        env,
-        InvokerContractAuthEntry::Contract(SubContractInvocation {
-            context: ContractContext {
-                contract: config.blnd_token.clone(),
-                fn_name: Symbol::new(env, "transfer"),
-                args: (current_contract.clone(), router_pair, total_blnd).into_val(env),
-            },
-            sub_invocations: vec![env],
-        }),
-    ]);
-
-    // Step 6: Execute swap (BLND → USDC)
-    let path: Vec<Address> = vec![env, config.blnd_token.clone(), config.usdc_token.clone()];
-    let deadline = env.ledger().timestamp() + 300; // 5 min deadline
-
-    // Execute swap (accepting any output amount)
-    // Soroban has protocol-level frontrunning protection via authorization framework
-    let _amounts = router_client.swap_exact_tokens_for_tokens(
-        &total_blnd,
-        &0, // No minimum - trust Soroswap pricing
-        &path,
-        &current_contract, // Send USDC to this contract
-        &deadline,
-    );
 
     // Step 7: Calculate USDC delta (only new USDC from this swap)
     // This prevents double-counting if contract already held USDC
@@ -281,7 +254,6 @@ pub(crate) fn initialize_first_epoch(env: &Env, epoch_duration: u64) {
     let end_time = start_time + epoch_duration;
 
     let epoch = EpochInfo {
-        epoch_number: 0,
         start_time,
         end_time,
         faction_standings: Map::new(env),

@@ -43,26 +43,6 @@ pub struct Player {
     pub last_epoch_balance: i128,
 }
 
-/// OLDEST Player struct for migration purposes (pre-Nov 10)
-/// Used to read data stored with old field "total_deposited"
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PlayerV0 {
-    pub selected_faction: u32,
-    pub total_deposited: i128,
-    pub deposit_timestamp: u64,
-}
-
-/// OLD Player struct for migration purposes (Nov 10 - Nov 12)
-/// Used to read data stored with old field name "deposit_timestamp"
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PlayerV1 {
-    pub selected_faction: u32,
-    pub deposit_timestamp: u64,
-    pub last_epoch_balance: i128,
-}
-
 /// Per-epoch player data
 ///
 /// Created when a player first interacts with the contract in a new epoch.
@@ -88,27 +68,12 @@ pub struct EpochPlayer {
     pub total_fp_contributed: i128,
 }
 
-/// OLD EpochPlayer struct for migration purposes (pre-Nov 13)
-/// Used to read data stored with old field "locked_fp"
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EpochPlayerV0 {
-    pub epoch_faction: Option<u32>,
-    pub epoch_balance_snapshot: i128,
-    pub available_fp: i128,
-    pub locked_fp: i128,
-    pub total_fp_contributed: i128,
-}
-
 /// Epoch metadata
 ///
 /// Stores all information about an epoch including timing, standings, and rewards.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EpochInfo {
-    /// The sequential epoch number (starts at 0)
-    pub epoch_number: u32,
-
     /// Unix timestamp when this epoch started
     pub start_time: u64,
 
@@ -138,9 +103,6 @@ pub struct EpochInfo {
 pub struct GameSession {
     /// Address of the game contract
     pub game_id: Address,
-
-    /// Unique session identifier for this game instance
-    pub session_id: u32,
 
     /// Epoch when this game was created
     /// Used to prevent games from being completed in a different epoch

@@ -103,8 +103,8 @@ fn test_number_guess_game_integration() {
     let game_id = number_guess_client.start_game(&session_id, &player1, &player2, &wager1, &wager2);
 
     // Verify FP is locked in Blendizzard
-    let p1_epoch = blendizzard.get_epoch_player(&player1);
-    let p2_epoch = blendizzard.get_epoch_player(&player2);
+    let _p1_epoch = blendizzard.get_epoch_player(&player1);
+    let _p2_epoch = blendizzard.get_epoch_player(&player2);
 
     // Both players make their guesses
     number_guess_client.make_guess(&game_id, &player1, &5);
@@ -120,7 +120,7 @@ fn test_number_guess_game_integration() {
     } else {
         player1.clone()
     };
-    let loser_epoch = blendizzard.get_epoch_player(&loser);
+    let _loser_epoch = blendizzard.get_epoch_player(&loser);
 
     // Winner's wager should be unlocked and contributed to faction
 
@@ -134,7 +134,8 @@ fn test_number_guess_game_integration() {
     );
 
     // Verify faction standings are updated
-    let epoch_info = blendizzard.get_epoch(&None);
+    let current_epoch_num = blendizzard.get_current_epoch();
+    let epoch_info = blendizzard.get_epoch(&current_epoch_num);
     let winner_faction = winner_epoch.epoch_faction.unwrap();
 
     let faction_fp = epoch_info.faction_standings.get(winner_faction).unwrap();
@@ -188,7 +189,8 @@ fn test_multiple_number_guess_games() {
     number_guess_client.reveal_winner(&game2); // Ends in Blendizzard
 
     // Verify faction standings reflect both games
-    let epoch_info = blendizzard.get_epoch(&None);
+    let current_epoch_num = blendizzard.get_current_epoch();
+    let epoch_info = blendizzard.get_epoch(&current_epoch_num);
 
     // Calculate total FP across all factions
     let mut total_faction_fp = 0i128;
@@ -323,8 +325,8 @@ fn test_winner_fp_returned_loser_fp_spent() {
     let game_id = number_guess_client.start_game(&session_id, &player1, &player2, &wager, &wager);
 
     // Verify FP is locked during game
-    let p1_during = blendizzard.get_epoch_player(&player1);
-    let p2_during = blendizzard.get_epoch_player(&player2);
+    let _p1_during = blendizzard.get_epoch_player(&player1);
+    let _p2_during = blendizzard.get_epoch_player(&player2);
 
     // Play and reveal
     number_guess_client.make_guess(&game_id, &player1, &5);
@@ -673,7 +675,7 @@ fn test_full_epoch_cycle_with_rewards() {
     // Step 4: Verify faction standings after games
     // ========================================================================
 
-    let epoch0 = blendizzard.get_epoch(&Some(0));
+    let epoch0 = blendizzard.get_epoch(&0);
     let wholenoodle_fp = epoch0.faction_standings.get(0).unwrap_or(0);
     let pointystick_fp = epoch0.faction_standings.get(1).unwrap_or(0);
     let specialrock_fp = epoch0.faction_standings.get(2).unwrap_or(0);
@@ -712,11 +714,15 @@ fn test_full_epoch_cycle_with_rewards() {
     // Step 6: Verify epoch transition
     // ========================================================================
 
-    let epoch0_final = blendizzard.get_epoch(&Some(0));
-    let epoch1 = blendizzard.get_epoch(&None);
+    let epoch0_final = blendizzard.get_epoch(&0);
+    let current_epoch_num_check = blendizzard.get_current_epoch();
+    let epoch1 = blendizzard.get_epoch(&current_epoch_num_check);
 
     assert!(epoch0_final.is_finalized, "Epoch 0 should be finalized");
-    assert_eq!(epoch1.epoch_number, 1, "Should be in epoch 1");
+
+    // Verify we're now in epoch 1
+    let current_epoch_num = blendizzard.get_current_epoch();
+    assert_eq!(current_epoch_num, 1, "Should be in epoch 1");
 
     let winning_faction = epoch0_final
         .winning_faction
@@ -813,8 +819,10 @@ fn test_full_epoch_cycle_with_rewards() {
     let _winner4 = number_guess_client.reveal_winner(&game4);
 
     // Verify epoch 1 standings are being tracked
-    let epoch1_after_game = blendizzard.get_epoch(&None);
-    assert_eq!(epoch1_after_game.epoch_number, 1);
+    let current_epoch_num = blendizzard.get_current_epoch();
+    assert_eq!(current_epoch_num, 1, "Should still be in epoch 1");
+
+    let epoch1_after_game = blendizzard.get_epoch(&1);
 
     let epoch1_total_fp: i128 = (0..=2)
         .filter_map(|faction_id| epoch1_after_game.faction_standings.get(faction_id))

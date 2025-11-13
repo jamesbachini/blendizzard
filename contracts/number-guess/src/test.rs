@@ -32,13 +32,7 @@ impl MockBlendizzard {
         // Mock implementation - does nothing
     }
 
-    pub fn end_game(
-        _env: Env,
-        _game_id: Address,
-        _session_id: u32,
-        _proof: Bytes,
-        _outcome: GameOutcome,
-    ) {
+    pub fn end_game(_env: Env, _proof: Bytes, _outcome: GameOutcome) {
         // Mock implementation - does nothing
     }
 

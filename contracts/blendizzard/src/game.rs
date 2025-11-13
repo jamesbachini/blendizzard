@@ -96,6 +96,7 @@ pub(crate) fn is_game(env: &Env, game_id: &Address) -> bool {
 /// * `GameNotWhitelisted` - If game_id is not in the whitelist
 /// * `SessionAlreadyExists` - If session_id already exists
 /// * `InvalidAmount` - If wagers are <= 0
+/// * `PlayerNotFound` - If players don't exist
 /// * `InsufficientFactionPoints` - If players don't have enough FP
 pub(crate) fn start_game(
     env: &Env,
@@ -154,7 +155,6 @@ pub(crate) fn start_game(
     // Create game session
     let session = GameSession {
         game_id: game_id.clone(),
-        session_id,
         epoch_id: current_epoch,
         player1: player1.clone(),
         player2: player2.clone(),
@@ -191,29 +191,22 @@ pub(crate) fn start_game(
 ///
 /// # Arguments
 /// * `env` - Contract environment
-/// * `game_id` - Address of the game contract (must authorize call)
-/// * `session_id` - Unique session identifier
 /// * `proof` - ZK proof placeholder (verification handled client-side for MVP)
-/// * `outcome` - Game outcome data
+/// * `outcome` - Game outcome data (contains game_id, session_id, players, winner)
 ///
 /// # Errors
 /// * `SessionNotFound` - If session doesn't exist
 /// * `InvalidSessionState` - If session is not in Pending state
 /// * `InvalidGameOutcome` - If outcome data doesn't match session
 /// * `ProofVerificationFailed` - If ZK proof is invalid (future implementation)
-pub(crate) fn end_game(
-    env: &Env,
-    game_id: &Address,
-    session_id: u32,
-    proof: &Bytes,
-    outcome: &GameOutcome,
-) -> Result<(), Error> {
+pub(crate) fn end_game(env: &Env, proof: &Bytes, outcome: &GameOutcome) -> Result<(), Error> {
     // SECURITY: Require game contract to authorize this call
     // Only the whitelisted game contract should be able to submit outcomes
-    game_id.require_auth();
+    outcome.game_id.require_auth();
 
     // Get session
-    let mut session = storage::get_session(env, session_id).ok_or(Error::SessionNotFound)?;
+    let mut session =
+        storage::get_session(env, outcome.session_id).ok_or(Error::SessionNotFound)?;
 
     // Validate session state
     if session.status != GameStatus::Pending {
@@ -228,8 +221,7 @@ pub(crate) fn end_game(
     }
 
     // Validate outcome matches session
-    if outcome.game_id != *game_id
-        || outcome.session_id != session_id
+    if outcome.game_id != session.game_id
         || outcome.player1 != session.player1
         || outcome.player2 != session.player2
     {
@@ -265,8 +257,8 @@ pub(crate) fn end_game(
     // Note: FP was already subtracted from available_fp when game started (in lock_fp)
 
     // Get winner's epoch data
-    let mut winner_epoch = storage::get_epoch_player(env, current_epoch, winner)
-        .ok_or(Error::InsufficientFactionPoints)?;
+    let mut winner_epoch =
+        storage::get_epoch_player(env, current_epoch, winner).ok_or(Error::PlayerNotFound)?;
 
     // Only winner's wager contributes to faction standings
     winner_epoch.total_fp_contributed = winner_epoch
@@ -280,13 +272,20 @@ pub(crate) fn end_game(
     // Update session
     session.status = GameStatus::Completed;
     session.winner = Some(outcome.winner);
-    storage::set_session(env, session_id, &session);
+    storage::set_session(env, outcome.session_id, &session);
 
     // Update faction standings (only winner's wager contributes)
     update_faction_standings(env, winner, winner_wager, current_epoch)?;
 
     // Emit event (only winner's wager counts as contribution)
-    emit_game_ended(env, game_id, session_id, winner, loser, winner_wager);
+    emit_game_ended(
+        env,
+        &outcome.game_id,
+        outcome.session_id,
+        winner,
+        loser,
+        winner_wager,
+    );
 
     Ok(())
 }
@@ -368,8 +367,8 @@ fn update_faction_standings(
     current_epoch: u32,
 ) -> Result<(), Error> {
     // Get winner's faction
-    let epoch_player = storage::get_epoch_player(env, current_epoch, winner)
-        .ok_or(Error::InsufficientFactionPoints)?;
+    let epoch_player =
+        storage::get_epoch_player(env, current_epoch, winner).ok_or(Error::PlayerNotFound)?;
 
     let faction = epoch_player
         .epoch_faction

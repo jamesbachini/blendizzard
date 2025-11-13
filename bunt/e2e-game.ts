@@ -13,16 +13,15 @@
  * See CHITSHEET.md for contract addresses.
  */
 
-import { Client as BlendizzardContract, type Player, type EpochPlayer } from 'blendizzard';
+import { Client as BlendizzardContract, type Player, type EpochPlayer, type EpochInfo } from 'blendizzard';
 import { Client as FeeVaultContract } from 'fee-vault';
-import { Client as NumberGuessContract } from 'number-guess';
-import { Keypair, Networks, Transaction, BASE_FEE, contract, rpc } from '@stellar/stellar-sdk';
+import { Client as NumberGuessContract, type Game } from 'number-guess';
+import { Keypair, Networks, BASE_FEE, contract } from '@stellar/stellar-sdk';
+import { Api } from '@stellar/stellar-sdk/rpc';
 
 // Re-export types from contract and rpc modules
 type AssembledTransaction<T> = contract.AssembledTransaction<T>;
 type ClientOptions = contract.ClientOptions;
-type MethodOptions = contract.MethodOptions;
-const Api = rpc.Api;
 
 // ============================================================================
 // Configuration
@@ -30,6 +29,8 @@ const Api = rpc.Api;
 
 const NETWORK_PASSPHRASE = Networks.PUBLIC;
 const RPC_URL = 'https://rpc.lightsail.network';
+const SESSION_ID: number | undefined = undefined; // 375323;
+const GAME_ID = 3;
 
 // Default options for all contract method calls
 // BASE_FEE is 100 stroops, so BASE_FEE + 1 = 101 stroops
@@ -39,14 +40,13 @@ const DEFAULT_METHOD_OPTIONS = {
 } as const;
 
 // Contract addresses from CHITSHEET.md
-const BLENDIZZARD_ID = 'CAK6Z6KFMB3V2ENEJ7THVKXUYQ5EG7EL2TM5UQ2FLDXI37FS6DRIMIZH';
+const BLENDIZZARD_ID = 'CAHPLVEDW2HWY2EOTCTECDK5ZRHAB5FLER3WGHQ5OPFMBMMFJSTBRJZU';
 const FEE_VAULT_ID = 'CBBY53VYJSMAWCBZZ7BHJZ5XSZNJUS4ZE6Q4RN7TKZGHPYHMEE467W7Y';
 const NUMBER_GUESS_ID = 'CDB6IODG5BNNVILLJXBXYZVR7NP4HDO2NL7WALWIXGIDMA6VY4V75CEX';
 
 // Player configuration
-// NOTE: Replace with actual funded keypairs for real testing
-const PLAYER1_SECRET = process.env.PLAYER1_SECRET || 'SC...'; // Replace with real secret
-const PLAYER2_SECRET = process.env.PLAYER2_SECRET || 'SC...'; // Replace with real secret
+const PLAYER1_SECRET = process.env.PLAYER1_SECRET;
+const PLAYER2_SECRET = process.env.PLAYER2_SECRET;
 
 // ============================================================================
 // Helper Functions
@@ -55,22 +55,22 @@ const PLAYER2_SECRET = process.env.PLAYER2_SECRET || 'SC...'; // Replace with re
 /**
  * Create a contract client with the given keypair
  * Properly typed to preserve Client type information
+ * Uses SDK's basicNodeSigner for consistent transaction and auth entry signing
  */
 function createClient<T extends { new(options: ClientOptions): InstanceType<T> }>(
   ContractClass: T,
   contractId: string,
   keypair: Keypair
 ): InstanceType<T> {
+  // Use SDK's basicNodeSigner for both transaction signing and auth entry signing
+  const signer = contract.basicNodeSigner(keypair, NETWORK_PASSPHRASE);
+
   const options: ClientOptions = {
     contractId,
     networkPassphrase: NETWORK_PASSPHRASE,
     rpcUrl: RPC_URL,
     publicKey: keypair.publicKey(),
-    async signTransaction(tx: string) {
-      const transaction = new Transaction(tx, NETWORK_PASSPHRASE);
-      transaction.sign(keypair);
-      return { signedTxXdr: transaction.toXDR() };
-    },
+    ...signer, // Includes signTransaction and signAuthEntry
   };
 
   return new ContractClass(options) as InstanceType<T>;
@@ -88,11 +88,14 @@ function formatAmount(amount: bigint): string {
  * 1. Build and simulate
  * 2. Review simulation for errors
  * 3. Check authorization requirements
- * 4. Sign and send
+ * 4. Sign and send (with multi-sig support)
+ *
+ * @param additionalSigners - Optional map of address -> Keypair for multi-signature support
  */
 async function logTx<T>(
   txPromise: Promise<AssembledTransaction<T>>,
-  description: string
+  description: string,
+  additionalSigners?: Map<string, Keypair>
 ): Promise<T> {
   console.log(`\n📤 ${description}...`);
   try {
@@ -108,15 +111,49 @@ async function logTx<T>(
     }
     console.log(`   ✓ Simulation successful`);
 
-    // 3. Check for required signatures
+    // 3. Check for required signatures and sign auth entries with available keypairs
     const needsSigningBy = assembled.needsNonInvokerSigningBy();
     if (needsSigningBy.length > 0) {
       console.log(`   ⚠ Transaction requires additional signatures from:`, needsSigningBy);
-      throw new Error(`Multi-signature not implemented. Required signers: ${needsSigningBy.join(', ')}`);
-    }
-    console.log(`   ✓ No additional signatures required`);
 
-    // 4. Sign and send the transaction
+      if (!additionalSigners) {
+        throw new Error(`Multi-signature required but no additional signers provided. Required: ${needsSigningBy.join(', ')}`);
+      }
+
+      // Sign auth entries for each required signer
+      const missingSigners: string[] = [];
+
+      for (const requiredAddress of needsSigningBy) {
+        const signer = additionalSigners.get(requiredAddress);
+        if (signer) {
+          console.log(`   ✓ Signing auth entries for ${requiredAddress}`);
+
+          // Sign the authorization entries (not the transaction itself)
+          // For non-invoker accounts, use the SDK's basicNodeSigner helper
+          const nodeSigner = contract.basicNodeSigner(signer, NETWORK_PASSPHRASE);
+
+          await assembled.signAuthEntries({
+            address: requiredAddress,
+            signAuthEntry: nodeSigner.signAuthEntry
+          });
+
+          console.log(`   ✓ Signed auth entries for ${signer.publicKey()}`);
+        } else {
+          console.log(`   ✗ No keypair available for ${requiredAddress}`);
+          missingSigners.push(requiredAddress);
+        }
+      }
+
+      if (missingSigners.length > 0) {
+        throw new Error(`Missing keypairs for required signers: ${missingSigners.join(', ')}`);
+      }
+
+      console.log(`   ✓ All required auth entries signed`);
+    } else {
+      console.log(`   ✓ No additional signatures required`);
+    }
+
+    // 4. Sign and send the transaction (this will add the invoker's signature)
     console.log(`   ⏳ Signing and sending...`);
     const { result } = await assembled.signAndSend();
     console.log(`✅ ${description} - Success`);
@@ -182,6 +219,14 @@ async function main() {
   const feeVault2 = createClient(FeeVaultContract, FEE_VAULT_ID, player2);
   const numberGuess1 = createClient(NumberGuessContract, NUMBER_GUESS_ID, player1);
   const numberGuess2 = createClient(NumberGuessContract, NUMBER_GUESS_ID, player2);
+
+  // Create signers map for multi-signature support
+  // Add all available keypairs that might be needed for signing auth entries
+  const signers = new Map<string, Keypair>();
+  signers.set(player1.publicKey(), player1);
+  signers.set(player2.publicKey(), player2);
+
+  console.log(`\n🔑 Available signers: ${signers.size}`);
 
   // // ============================================================================
   // // Step 1: Deposit to Fee Vault
@@ -258,39 +303,39 @@ async function main() {
   // console.log(`   Faction: ${player2Data.selected_faction}`);
   // console.log(`   Time Multiplier Start: ${player2Data.time_multiplier_start}`);
 
-  // ============================================================================
-  // Step 4: Start Number Guess Game
-  // ============================================================================
+  // // ============================================================================
+  // // Step 4: Start Number Guess Game
+  // // ============================================================================
 
-  console.log('\n\n🎲 Step 4: Start Number Guess Game');
-  console.log('-'.repeat(60));
+  // console.log('\n\n🎲 Step 4: Start Number Guess Game');
+  // console.log('-'.repeat(60));
 
-  // First, query each player's available FP
-  const p1EpochBefore = await queryContract<EpochPlayer>(
-    blendizzard1.get_epoch_player({ player: player1.publicKey() }, DEFAULT_METHOD_OPTIONS),
-    'Get Player 1 epoch data'
-  );
-  const p2EpochBefore = await queryContract<EpochPlayer>(
-    blendizzard2.get_epoch_player({ player: player2.publicKey() }, DEFAULT_METHOD_OPTIONS),
-    'Get Player 2 epoch data'
-  );
+  // // First, query each player's available FP
+  // const p1EpochBefore = await queryContract<EpochPlayer>(
+  //   blendizzard1.get_epoch_player({ player: player1.publicKey() }, DEFAULT_METHOD_OPTIONS),
+  //   'Get Player 1 epoch data'
+  // );
+  // const p2EpochBefore = await queryContract<EpochPlayer>(
+  //   blendizzard2.get_epoch_player({ player: player2.publicKey() }, DEFAULT_METHOD_OPTIONS),
+  //   'Get Player 2 epoch data'
+  // );
 
-  console.log(p1EpochBefore);
-  console.log(p2EpochBefore);
+  // console.log(p1EpochBefore);
+  // console.log(p2EpochBefore);
 
-  console.log(`\n📊 FP State Before Game:`);
-  console.log(`   Player 1 Available FP: ${formatAmount(BigInt(p1EpochBefore.available_fp))}`);
-  console.log(`   Player 2 Available FP: ${formatAmount(BigInt(p2EpochBefore.available_fp))}`);
+  // console.log(`\n📊 FP State Before Game:`);
+  // console.log(`   Player 1 Available FP: ${formatAmount(BigInt(p1EpochBefore.available_fp))}`);
+  // console.log(`   Player 2 Available FP: ${formatAmount(BigInt(p2EpochBefore.available_fp))}`);
 
-  // Use the minimum available FP as the wager
-  const player1AvailableFP = BigInt(p1EpochBefore.available_fp);
-  const player2AvailableFP = BigInt(p2EpochBefore.available_fp);
-  const wager = player1AvailableFP < player2AvailableFP ? player1AvailableFP : player2AvailableFP;
+  // // Use the minimum available FP as the wager
+  // const player1AvailableFP = BigInt(p1EpochBefore.available_fp);
+  // const player2AvailableFP = BigInt(p2EpochBefore.available_fp);
+  // const wager = player1AvailableFP < player2AvailableFP ? player1AvailableFP : player2AvailableFP;
 
-  const sessionId = Math.floor(Math.random() * 1_000_000); // Random session ID
+  // const sessionId = SESSION_ID || Math.floor(Math.random() * 1_000_000); // Random session ID
 
-  console.log(`\nSession ID: ${sessionId}`);
-  console.log(`Wager: ${formatAmount(wager)} FP (max both players can afford)`);
+  // console.log(`\nSession ID: ${sessionId}`);
+  // console.log(`Wager: ${formatAmount(wager)} FP (max both players can afford)`);
 
   // await logTx(
   //   numberGuess1.start_game({
@@ -300,26 +345,25 @@ async function main() {
   //     player1_wager: wager,
   //     player2_wager: wager,
   //   }, DEFAULT_METHOD_OPTIONS),
-  //   'Start number guess game (locks FP via blendizzard)'
+  //   'Start number guess game (locks FP via blendizzard)',
+  //   signers  // Pass signers map for multi-signature support
   // );
 
   // // Check FP state after game start
-  // const p1EpochAfter = await queryContract<EpochPlayer>(
+  // const p1EpochAfterStart = await queryContract<EpochPlayer>(
   //   blendizzard1.get_epoch_player({ player: player1.publicKey() }, DEFAULT_METHOD_OPTIONS),
   //   'Get Player 1 epoch data after game start'
   // );
-  // const p2EpochAfter = await queryContract<EpochPlayer>(
+  // const p2EpochAfterStart = await queryContract<EpochPlayer>(
   //   blendizzard2.get_epoch_player({ player: player2.publicKey() }, DEFAULT_METHOD_OPTIONS),
   //   'Get Player 2 epoch data after game start'
   // );
 
   // console.log(`\n📊 FP State After Game Start:`);
   // console.log(`   Player 1:`);
-  // console.log(`      Available FP: ${formatAmount(BigInt(p1EpochAfter.available_fp))}`);
-  // console.log(`      Locked FP: ${formatAmount(BigInt(p1EpochAfter.locked_fp))}`);
+  // console.log(`      Available FP: ${formatAmount(BigInt(p1EpochAfterStart.available_fp))}`);
   // console.log(`   Player 2:`);
-  // console.log(`      Available FP: ${formatAmount(BigInt(p2EpochAfter.available_fp))}`);
-  // console.log(`      Locked FP: ${formatAmount(BigInt(p2EpochAfter.locked_fp))}`);
+  // console.log(`      Available FP: ${formatAmount(BigInt(p2EpochAfterStart.available_fp))}`);
 
   // // ============================================================================
   // // Step 5: Players Make Guesses
@@ -333,7 +377,7 @@ async function main() {
 
   // await logTx(
   //   numberGuess1.make_guess({
-  //     game_id: sessionId,
+  //     game_id: GAME_ID, // sessionId, number-guess should use the session id to track the game not a counter
   //     player: player1.publicKey(),
   //     guess: player1Guess,
   //   }, DEFAULT_METHOD_OPTIONS),
@@ -342,7 +386,7 @@ async function main() {
 
   // await logTx(
   //   numberGuess2.make_guess({
-  //     game_id: sessionId,
+  //     game_id: GAME_ID, //sessionId, number-guess should use the session id to track the game not a counter
   //     player: player2.publicKey(),
   //     guess: player2Guess,
   //   }, DEFAULT_METHOD_OPTIONS),
@@ -358,63 +402,71 @@ async function main() {
 
   // await logTx(
   //   numberGuess1.reveal_winner({
-  //     game_id: sessionId,
+  //     game_id: GAME_ID, // sessionId,
   //   }, DEFAULT_METHOD_OPTIONS),
   //   'Reveal winner (burns FP, updates faction standings)'
   // );
 
   // // Get game result
-  // const gameResult = await queryContract(
-  //   numberGuess1.get_game({ game_id: sessionId }, DEFAULT_METHOD_OPTIONS),
+  // const gameResult = await queryContract<Game>(
+  //   numberGuess1.get_game({ 
+  //     game_id: GAME_ID // sessionId 
+  //   }, DEFAULT_METHOD_OPTIONS),
   //   'Get game result'
   // );
 
   // console.log(`\n🎯 Game Result:`);
   // console.log(`   Winning Number: ${gameResult.winning_number}`);
-  // console.log(`   Player 1 Guess: ${player1Guess}`);
-  // console.log(`   Player 2 Guess: ${player2Guess}`);
-  // console.log(`   Winner: ${gameResult.winner === player1.publicKey() ? 'Player 1' : 'Player 2'}`);
+  // console.log(`   Player 1 Guess: ${gameResult.guess1 ?? 'not guessed'}`);
+  // console.log(`   Player 2 Guess: ${gameResult.guess2 ?? 'not guessed'}`);
 
-  // // ============================================================================
-  // // Step 7: Verify Final State
-  // // ============================================================================
+  // // Handle Option<string> winner type
+  // const winnerAddress = gameResult.winner;
+  // const winnerName = winnerAddress === player1.publicKey() ? 'Player 1' :
+  //                    winnerAddress === player2.publicKey() ? 'Player 2' :
+  //                    'Unknown';
+  // console.log(`   Winner: ${winnerName} (${winnerAddress ?? 'no winner'})`);
 
-  // console.log('\n\n✅ Step 7: Verify Final State');
-  // console.log('-'.repeat(60));
+  // ============================================================================
+  // Step 7: Verify Final State
+  // ============================================================================
 
-  // const p1EpochAfter = await queryContract(
-  //   blendizzard1.get_epoch_player({ player: player1.publicKey() }, DEFAULT_METHOD_OPTIONS),
-  //   'Get Player 1 final epoch data'
-  // );
-  // const p2EpochAfter = await queryContract(
-  //   blendizzard2.get_epoch_player({ player: player2.publicKey() }, DEFAULT_METHOD_OPTIONS),
-  //   'Get Player 2 final epoch data'
-  // );
+  console.log('\n\n✅ Step 7: Verify Final State');
+  console.log('-'.repeat(60));
 
-  // console.log(`\n📊 FP State After Game End:`);
-  // console.log(`   Player 1:`);
-  // console.log(`      Available FP: ${formatAmount(BigInt(p1EpochAfter.available_fp))}`);
-  // console.log(`      Locked FP: ${formatAmount(BigInt(p1EpochAfter.locked_fp))}`);
-  // console.log(`      Total Contributed: ${formatAmount(BigInt(p1EpochAfter.total_fp_contributed))}`);
-  // console.log(`   Player 2:`);
-  // console.log(`      Available FP: ${formatAmount(BigInt(p2EpochAfter.available_fp))}`);
-  // console.log(`      Locked FP: ${formatAmount(BigInt(p2EpochAfter.locked_fp))}`);
-  // console.log(`      Total Contributed: ${formatAmount(BigInt(p2EpochAfter.total_fp_contributed))}`);
+  const p1EpochFinal = await queryContract<EpochPlayer>(
+    blendizzard1.get_epoch_player({ player: player1.publicKey() }, DEFAULT_METHOD_OPTIONS),
+    'Get Player 1 final epoch data'
+  );
+  const p2EpochFinal = await queryContract<EpochPlayer>(
+    blendizzard2.get_epoch_player({ player: player2.publicKey() }, DEFAULT_METHOD_OPTIONS),
+    'Get Player 2 final epoch data'
+  );
 
-  // // Get faction standings
-  // const epoch = await queryContract(
-  //   blendizzard1.get_epoch({ epoch: 0 }, DEFAULT_METHOD_OPTIONS),
-  //   'Get epoch 0 data'
-  // );
+  console.log(`\n📊 FP State After Game End:`);
+  console.log(`   Player 1:`);
+  console.log(`      Available FP: ${formatAmount(BigInt(p1EpochFinal.available_fp))}`);
+  console.log(`      Total Contributed: ${formatAmount(BigInt(p1EpochFinal.total_fp_contributed))}`);
+  console.log(`   Player 2:`);
+  console.log(`      Available FP: ${formatAmount(BigInt(p2EpochFinal.available_fp))}`);
+  console.log(`      Total Contributed: ${formatAmount(BigInt(p2EpochFinal.total_fp_contributed))}`);
 
-  // console.log(`\n⚔️  Faction Standings:`);
-  // for (const [factionId, points] of epoch.faction_standings.entries()) {
-  //   const factionName = factionId === 0 ? 'WholeNoodle' : factionId === 1 ? 'PointyStick' : 'SpecialRock';
-  //   console.log(`   ${factionName} (${factionId}): ${formatAmount(BigInt(points))} FP`);
-  // }
+  // Get faction standings
+  const epoch = await queryContract<EpochInfo>(
+    blendizzard1.get_epoch({ epoch: 0 }, DEFAULT_METHOD_OPTIONS),
+    'Get epoch 0 data'
+  );
 
-  // console.log('\n\n🎉 End-to-End Test Complete!');
-  // console.log('=' .repeat(60));
+  console.log(`\n⚔️  Faction Standings:`);
+  // Convert Map entries to array for iteration
+  const factionEntries = Array.from(epoch.faction_standings.entries());
+  for (const [factionId, points] of factionEntries) {
+    const factionName = factionId === 0 ? 'WholeNoodle' : factionId === 1 ? 'PointyStick' : 'SpecialRock';
+    console.log(`   ${factionName} (${factionId}): ${formatAmount(BigInt(points))} FP`);
+  }
+
+  console.log('\n\n🎉 End-to-End Test Complete!');
+  console.log('=' .repeat(60));
 }
 
 // Run the script
