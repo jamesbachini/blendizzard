@@ -190,7 +190,7 @@ fn withdraw_and_convert_rewards(env: &Env) -> Result<i128, Error> {
     // Emissions are separate from admin fees and MUST be claimed explicitly
     // Without this, we're leaving significant BLND rewards unclaimed!
     vault_client.claim_emissions(&config.reserve_token_ids, &current_contract);
-    
+
     let total_blnd = blnd_client.balance(&current_contract);
 
     // Early return if no BLND available from either source

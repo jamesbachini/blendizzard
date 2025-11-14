@@ -13,7 +13,7 @@ use super::fee_vault_utils::{create_mock_vault, MockVaultClient};
 use super::testutils::{create_blendizzard_contract, setup_test_env};
 use crate::BlendizzardClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{vec, Address, Bytes, Env};
+use soroban_sdk::{vec, Address, Env};
 
 // ============================================================================
 // Test Setup Helpers
@@ -21,12 +21,7 @@ use soroban_sdk::{vec, Address, Bytes, Env};
 
 fn setup_cross_epoch_test<'a>(
     env: &'a Env,
-) -> (
-    Address,
-    Address,
-    MockVaultClient<'a>,
-    BlendizzardClient<'a>,
-) {
+) -> (Address, Address, MockVaultClient<'a>, BlendizzardClient<'a>) {
     use super::soroswap_utils::{add_liquidity, create_factory, create_router, create_token};
 
     let admin = Address::generate(env);
@@ -114,8 +109,16 @@ fn test_cross_epoch_withdrawal_detection() {
     let epoch_start = epoch0.start_time;
 
     // Play first game in epoch 0 (establishes last_epoch_balance = 1000)
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 1000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data = blendizzard.get_player(&player1);
     let initial_time_start = player_data.time_multiplier_start;
@@ -125,20 +128,28 @@ fn test_cross_epoch_withdrawal_detection() {
     );
 
     // Complete game
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 1, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+
+    blendizzard.end_game(&1, &true);
 
     // Cycle to epoch 1
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600);
     blendizzard.cycle_epoch();
 
     // Withdraw 60% (400 USDC remaining from 1000)
     mock_vault.set_user_balance(&player1, &400_0000000);
 
     // Play first game of epoch 1 - should detect withdrawal and reset
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &50_0000000, &50_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &50_0000000,
+        &50_0000000,
+    );
 
     let player_data_after = blendizzard.get_player(&player1);
 
@@ -181,27 +192,43 @@ fn test_cross_epoch_deposit_no_reset() {
     let epoch_start = epoch0.start_time;
 
     // Play first game in epoch 0
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 1000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data = blendizzard.get_player(&player1);
     let initial_time_start = player_data.time_multiplier_start;
 
     // Complete game
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 1, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+
+    blendizzard.end_game(&1, &true);
 
     // Cycle to epoch 1
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600);
     blendizzard.cycle_epoch();
 
     // Deposit MORE (3000 USDC total) - net change is positive
     mock_vault.set_user_balance(&player1, &3000_0000000);
 
     // Play first game of epoch 1
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &50_0000000, &50_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &50_0000000,
+        &50_0000000,
+    );
 
     let player_data_after = blendizzard.get_player(&player1);
 
@@ -236,25 +263,41 @@ fn test_time_multiplier_persists_across_epochs() {
     let epoch_start = epoch0.start_time;
 
     // Play first game in epoch 0 at timestamp 1000
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 1000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data = blendizzard.get_player(&player1);
     let time_start = player_data.time_multiplier_start;
     assert_eq!(time_start, epoch_start + 1000);
 
     // Complete game
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 1, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+
+    blendizzard.end_game(&1, &true);
 
     // Cycle to epoch 1 (4 days later)
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600);
     blendizzard.cycle_epoch();
 
     // Play game in epoch 1 (no withdrawal, so no reset)
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600 + 1000);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600 + 1000);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data_epoch1 = blendizzard.get_player(&player1);
     assert_eq!(
@@ -262,17 +305,25 @@ fn test_time_multiplier_persists_across_epochs() {
         "Time multiplier start should persist into epoch 1"
     );
 
-    // Complete game
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 2, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+    // Complete game (session 2)
+    blendizzard.end_game(&2, &true);
 
     // Cycle to epoch 2 (8 days from start)
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 2 * 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 2 * 345_600);
     blendizzard.cycle_epoch();
 
     // Play game in epoch 2
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 2 * 345_600 + 1000);
-    blendizzard.start_game(&game_contract, &3, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 2 * 345_600 + 1000);
+    blendizzard.start_game(
+        &game_contract,
+        &3,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data_epoch2 = blendizzard.get_player(&player1);
     assert_eq!(
@@ -282,7 +333,10 @@ fn test_time_multiplier_persists_across_epochs() {
 
     // Verify time has been held for 2 epochs (8 days)
     let time_held = (epoch_start + 2 * 345_600 + 1000) - time_start;
-    assert_eq!(time_held, 691_200, "Time held should accumulate across epochs");
+    assert_eq!(
+        time_held, 691_200,
+        "Time held should accumulate across epochs"
+    );
 
     // With 8 days held, time multiplier should be significantly boosted
     // (asymptotic toward 30 days max, but 8 days should give decent boost)
@@ -312,21 +366,36 @@ fn test_time_multiplier_reset_after_large_withdrawal() {
     let epoch_start = epoch0.start_time;
 
     // === EPOCH 0: Accumulate time ===
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 1000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let time_start_epoch0 = blendizzard.get_player(&player1).time_multiplier_start;
 
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 1, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     // === EPOCH 1: Continue time accumulation (no withdrawal) ===
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600);
     blendizzard.cycle_epoch();
 
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600 + 1000);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600 + 1000);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     // Time should still be from epoch 0
     assert_eq!(
@@ -334,18 +403,26 @@ fn test_time_multiplier_reset_after_large_withdrawal() {
         time_start_epoch0
     );
 
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 2, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&2, &true);
 
     // === EPOCH 2: Large withdrawal, triggers reset ===
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 2 * 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 2 * 345_600);
     blendizzard.cycle_epoch();
 
     // Withdraw 60% (400 USDC remaining from 1000)
     mock_vault.set_user_balance(&player1, &400_0000000);
 
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 2 * 345_600 + 5000);
-    blendizzard.start_game(&game_contract, &3, &player1, &player2, &50_0000000, &50_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 2 * 345_600 + 5000);
+    blendizzard.start_game(
+        &game_contract,
+        &3,
+        &player1,
+        &player2,
+        &50_0000000,
+        &50_0000000,
+    );
 
     let time_start_after_reset = blendizzard.get_player(&player1).time_multiplier_start;
 
@@ -353,16 +430,24 @@ fn test_time_multiplier_reset_after_large_withdrawal() {
     assert!(time_start_after_reset > time_start_epoch0);
     assert_eq!(time_start_after_reset, epoch_start + 2 * 345_600 + 5000);
 
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 3, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&3, &true);
 
     // === EPOCH 3: Verify time accumulation restarts from reset point ===
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 3 * 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 3 * 345_600);
     blendizzard.cycle_epoch();
 
     // Keep balance same (no reset on stable balance)
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 3 * 345_600 + 10_000);
-    blendizzard.start_game(&game_contract, &4, &player1, &player2, &50_0000000, &50_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 3 * 345_600 + 10_000);
+    blendizzard.start_game(
+        &game_contract,
+        &4,
+        &player1,
+        &player2,
+        &50_0000000,
+        &50_0000000,
+    );
 
     // Time should still be from epoch 2 reset point
     assert_eq!(

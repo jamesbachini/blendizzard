@@ -11,7 +11,7 @@ use super::fee_vault_utils::{create_mock_vault, MockVaultClient};
 use super::testutils::{create_blendizzard_contract, setup_test_env};
 use crate::BlendizzardClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{vec, Address, Bytes, Env, Vec};
+use soroban_sdk::{vec, Address, Env, Vec};
 
 // ============================================================================
 // Test Setup Helpers
@@ -82,7 +82,13 @@ fn setup_reward_test_env<'a>(
 
     blendizzard.add_game(&game_contract);
 
-    (game_contract, mock_vault_addr, mock_vault, blendizzard, blnd_token_client)
+    (
+        game_contract,
+        mock_vault_addr,
+        mock_vault,
+        blendizzard,
+        blnd_token_client,
+    )
 }
 
 // ============================================================================
@@ -96,7 +102,8 @@ fn setup_reward_test_env<'a>(
 #[test]
 fn test_multiple_winners_share_rewards() {
     let env = setup_test_env();
-    let (game_contract, _vault_addr, mock_vault, blendizzard, blnd_token) = setup_reward_test_env(&env);
+    let (game_contract, _vault_addr, mock_vault, blendizzard, blnd_token) =
+        setup_reward_test_env(&env);
 
     // Mint BLND to contract for reward pool (will be swapped to USDC during epoch cycle)
     blnd_token.mint(&blendizzard.address, &5000_0000000);
@@ -120,40 +127,40 @@ fn test_multiple_winners_share_rewards() {
 
     // Play games to establish FP
     let epoch0 = blendizzard.get_epoch(&0);
-    env.ledger().with_mut(|li| li.timestamp = epoch0.start_time + 1000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch0.start_time + 1000);
 
     // P1, P2, P3 all win their games (contribute FP)
     // Wager amounts proportional to balance: P1=100, P2=200, P3=300
-    blendizzard.start_game(&game_contract, &1, &p1, &opponent, &100_0000000, &100_0000000);
-    let proof = Bytes::new(&env);
-    let outcome1 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: p1.clone(),
-        player2: opponent.clone(),
-        winner: true, // p1 wins
-    };
-    blendizzard.end_game(&proof, &outcome1);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &p1,
+        &opponent,
+        &100_0000000,
+        &100_0000000,
+    );
+    blendizzard.end_game(&1, &true);
 
-    blendizzard.start_game(&game_contract, &2, &p2, &opponent, &200_0000000, &100_0000000);
-    let outcome2 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 2,
-        player1: p2.clone(),
-        player2: opponent.clone(),
-        winner: true, // p2 wins
-    };
-    blendizzard.end_game(&proof, &outcome2);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &p2,
+        &opponent,
+        &200_0000000,
+        &100_0000000,
+    );
+    blendizzard.end_game(&2, &true);
 
-    blendizzard.start_game(&game_contract, &3, &p3, &opponent, &300_0000000, &100_0000000);
-    let outcome3 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 3,
-        player1: p3.clone(),
-        player2: opponent.clone(),
-        winner: true, // p3 wins
-    };
-    blendizzard.end_game(&proof, &outcome3);
+    blendizzard.start_game(
+        &game_contract,
+        &3,
+        &p3,
+        &opponent,
+        &300_0000000,
+        &100_0000000,
+    );
+    blendizzard.end_game(&3, &true);
 
     // Get FP contributions
     let current_epoch = blendizzard.get_current_epoch();
@@ -211,7 +218,8 @@ fn test_multiple_winners_share_rewards() {
 #[test]
 fn test_reward_distribution_sums_to_pool() {
     let env = setup_test_env();
-    let (game_contract, _vault_addr, mock_vault, blendizzard, blnd_token) = setup_reward_test_env(&env);
+    let (game_contract, _vault_addr, mock_vault, blendizzard, blnd_token) =
+        setup_reward_test_env(&env);
 
     // Mint BLND to contract for reward pool
     blnd_token.mint(&blendizzard.address, &5000_0000000);
@@ -251,15 +259,7 @@ fn test_reward_distribution_sums_to_pool() {
             &50_0000000,
         );
 
-        let proof = Bytes::new(&env);
-        let outcome = crate::types::GameOutcome {
-            game_id: game_contract.clone(),
-            session_id,
-            player1: player.clone(),
-            player2: opponent.clone(),
-            winner: true, // player wins
-        };
-        blendizzard.end_game(&proof, &outcome);
+        blendizzard.end_game(&session_id, &true);
     }
 
     // Cycle epoch
@@ -301,7 +301,8 @@ fn test_reward_distribution_sums_to_pool() {
 #[test]
 fn test_zero_reward_pool_handling() {
     let env = setup_test_env();
-    let (game_contract, _vault_addr, mock_vault, blendizzard, _blnd_token) = setup_reward_test_env(&env);
+    let (game_contract, _vault_addr, mock_vault, blendizzard, _blnd_token) =
+        setup_reward_test_env(&env);
 
     let player = Address::generate(&env);
     let opponent = Address::generate(&env);
@@ -326,15 +327,7 @@ fn test_zero_reward_pool_handling() {
         &100_0000000,
     );
 
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: player.clone(),
-        player2: opponent.clone(),
-        winner: true, // player wins
-    };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     // DON'T add any reward pool (zero yield)
 
@@ -361,7 +354,8 @@ fn test_zero_reward_pool_handling() {
 #[test]
 fn test_single_player_gets_all_rewards() {
     let env = setup_test_env();
-    let (game_contract, _vault_addr, mock_vault, blendizzard, blnd_token) = setup_reward_test_env(&env);
+    let (game_contract, _vault_addr, mock_vault, blendizzard, blnd_token) =
+        setup_reward_test_env(&env);
 
     // Mint BLND to contract for reward pool
     blnd_token.mint(&blendizzard.address, &5000_0000000);
@@ -390,15 +384,7 @@ fn test_single_player_gets_all_rewards() {
         &100_0000000,
     );
 
-    let proof = Bytes::new(&env);
-    let outcome1 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: winner.clone(),
-        player2: loser.clone(),
-        winner: true, // winner wins
-    };
-    blendizzard.end_game(&proof, &outcome1);
+    blendizzard.end_game(&1, &true);
 
     // Loser loses their game (different session)
     blendizzard.start_game(
@@ -410,14 +396,7 @@ fn test_single_player_gets_all_rewards() {
         &100_0000000,
     );
 
-    let outcome2 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 2,
-        player1: loser.clone(),
-        player2: winner.clone(),
-        winner: false, // winner wins (as player2)
-    };
-    blendizzard.end_game(&proof, &outcome2);
+    blendizzard.end_game(&2, &false);
 
     // Cycle epoch
     env.ledger()
@@ -461,7 +440,8 @@ fn test_single_player_gets_all_rewards() {
 #[test]
 fn test_reward_precision_with_small_amounts() {
     let env = setup_test_env();
-    let (game_contract, _vault_addr, mock_vault, blendizzard, blnd_token) = setup_reward_test_env(&env);
+    let (game_contract, _vault_addr, mock_vault, blendizzard, blnd_token) =
+        setup_reward_test_env(&env);
 
     // Mint BLND to contract for reward pool
     blnd_token.mint(&blendizzard.address, &5000_0000000);
@@ -485,25 +465,10 @@ fn test_reward_precision_with_small_amounts() {
         .with_mut(|li| li.timestamp = epoch0.start_time + 1000);
 
     blendizzard.start_game(&game_contract, &1, &p1, &opponent, &1_0000000, &1_0000000);
-    let proof = Bytes::new(&env);
-    let outcome1 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: p1.clone(),
-        player2: opponent.clone(),
-        winner: true, // p1 wins
-    };
-    blendizzard.end_game(&proof, &outcome1);
+    blendizzard.end_game(&1, &true);
 
     blendizzard.start_game(&game_contract, &2, &p2, &opponent, &1_0000000, &1_0000000);
-    let outcome2 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 2,
-        player1: p2.clone(),
-        player2: opponent.clone(),
-        winner: true, // p2 wins
-    };
-    blendizzard.end_game(&proof, &outcome2);
+    blendizzard.end_game(&2, &true);
 
     // Cycle epoch
     env.ledger()

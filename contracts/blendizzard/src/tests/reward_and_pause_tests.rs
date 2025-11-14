@@ -260,23 +260,15 @@ fn test_start_game_duplicate_session_id() {
 #[test]
 fn test_end_game_nonexistent_session() {
     let env = setup_test_env();
-    let (game, _vault, _mock_vault, blendizzard, _usdc) = setup_complete_game_env(&env);
+    let (_game, _vault, _mock_vault, blendizzard, _usdc) = setup_complete_game_env(&env);
 
-    let player1 = Address::generate(&env);
-    let player2 = Address::generate(&env);
+    let _player1 = Address::generate(&env);
+    let _player2 = Address::generate(&env);
 
     // Try to end a session that doesn't exist
     let session = 13u32;
-    let proof = soroban_sdk::Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game.clone(),
-        session_id: session.clone(),
-        player1: player1.clone(),
-        player2: player2.clone(),
-        winner: true,
-    };
 
-    let result = blendizzard.try_end_game(&proof, &outcome);
+    let result = blendizzard.try_end_game(&session, &true);
     assert!(result.is_err(), "Should fail with nonexistent session");
 }
 
@@ -337,7 +329,8 @@ fn test_faction_switch_applies_next_epoch() {
     blendizzard.select_faction(&player, &1);
 
     // Epoch 0 faction should still be WholeNoodle (locked)
-    let epoch0_player_after = blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player);
+    let epoch0_player_after =
+        blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player);
     assert_eq!(
         epoch0_player_after.epoch_faction,
         Some(0),
@@ -612,15 +605,7 @@ fn test_get_faction_standings() {
         &50_0000000,
     );
 
-    let proof = soroban_sdk::Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game.clone(),
-        session_id: session.clone(),
-        player1: player1.clone(),
-        player2: player2.clone(),
-        winner: true, // player1 wins
-    };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&session, &true);
 
     // Get faction standings for epoch 0 via get_epoch
     let epoch = blendizzard.get_epoch(&0);

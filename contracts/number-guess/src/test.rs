@@ -7,9 +7,9 @@
 // For full integration tests with the real Blendizzard contract, see:
 // contracts/blendizzard/src/tests/number_guess_integration.rs
 
-use crate::{Error, GameOutcome, GameStatus, NumberGuessContract, NumberGuessContractClient};
+use crate::{Error, NumberGuessContract, NumberGuessContractClient};
 use soroban_sdk::testutils::{Address as _, Ledger as _};
-use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env};
+use soroban_sdk::{contract, contractimpl, Address, BytesN, Env};
 
 // ============================================================================
 // Mock Blendizzard for Unit Testing
@@ -32,7 +32,7 @@ impl MockBlendizzard {
         // Mock implementation - does nothing
     }
 
-    pub fn end_game(_env: Env, _proof: Bytes, _outcome: GameOutcome) {
+    pub fn end_game(_env: Env, _session_id: u32, _player1_won: bool) {
         // Mock implementation - does nothing
     }
 
@@ -104,7 +104,7 @@ fn test_complete_game() {
     // Get game to verify state
     let game = client.get_game(&session_id);
     assert!(game.winning_number.is_none()); // Winning number not set yet
-    assert_eq!(game.status, GameStatus::Active);
+    assert!(game.winner.is_none()); // Game is still active
     assert_eq!(game.player1, player1);
     assert_eq!(game.player2, player2);
     assert_eq!(game.player1_wager, wager);
@@ -120,8 +120,7 @@ fn test_complete_game() {
 
     // Verify game is ended and winning number is now set
     let final_game = client.get_game(&session_id);
-    assert_eq!(final_game.status, GameStatus::Ended);
-    assert!(final_game.winner.is_some());
+    assert!(final_game.winner.is_some()); // Game has ended
     assert_eq!(final_game.winner.unwrap(), winner);
     assert!(final_game.winning_number.is_some());
     let winning_number = final_game.winning_number.unwrap();
@@ -141,7 +140,9 @@ fn test_winning_number_in_range() {
     client.reveal_winner(&session_id);
 
     let game = client.get_game(&session_id);
-    let winning_number = game.winning_number.expect("Winning number should be set after reveal");
+    let winning_number = game
+        .winning_number
+        .expect("Winning number should be set after reveal");
     assert!(
         winning_number >= 1 && winning_number <= 10,
         "Winning number should be between 1 and 10"
@@ -191,11 +192,26 @@ fn test_closest_guess_wins() {
     let winning_number = game.winning_number.unwrap();
 
     // Calculate which player should have won based on distances
-    let distance1 = if 5 > winning_number { 5 - winning_number } else { winning_number - 5 };
-    let distance2 = if 10 > winning_number { 10 - winning_number } else { winning_number - 10 };
+    let distance1 = if 5 > winning_number {
+        5 - winning_number
+    } else {
+        winning_number - 5
+    };
+    let distance2 = if 10 > winning_number {
+        10 - winning_number
+    } else {
+        winning_number - 10
+    };
 
-    let expected_winner = if distance1 <= distance2 { player1.clone() } else { player2.clone() };
-    assert_eq!(winner, expected_winner, "Player with closer guess should win");
+    let expected_winner = if distance1 <= distance2 {
+        player1.clone()
+    } else {
+        player2.clone()
+    };
+    assert_eq!(
+        winner, expected_winner,
+        "Player with closer guess should win"
+    );
 }
 
 #[test]
@@ -230,9 +246,21 @@ fn test_exact_guess_wins() {
     let winning_number = game.winning_number.unwrap();
 
     // Verify the winner matches the distance calculation
-    let distance1 = if 5 > winning_number { 5 - winning_number } else { winning_number - 5 };
-    let distance2 = if 10 > winning_number { 10 - winning_number } else { winning_number - 10 };
-    let expected_winner = if distance1 <= distance2 { player1.clone() } else { player2.clone() };
+    let distance1 = if 5 > winning_number {
+        5 - winning_number
+    } else {
+        winning_number - 5
+    };
+    let distance2 = if 10 > winning_number {
+        10 - winning_number
+    } else {
+        winning_number - 10
+    };
+    let expected_winner = if distance1 <= distance2 {
+        player1.clone()
+    } else {
+        player2.clone()
+    };
     assert_eq!(winner, expected_winner);
 }
 
@@ -380,8 +408,8 @@ fn test_multiple_games_independent() {
     let final_game1 = client.get_game(&session1);
     let final_game2 = client.get_game(&session2);
 
-    assert_eq!(final_game1.status, GameStatus::Ended);
-    assert_eq!(final_game2.status, GameStatus::Ended);
+    assert!(final_game1.winner.is_some()); // Game 1 has ended
+    assert!(final_game2.winner.is_some()); // Game 2 has ended
 
     // Note: winning numbers could be the same by chance, so we just verify they're both set
     assert!(final_game1.winning_number.is_some());
@@ -408,7 +436,7 @@ fn test_asymmetric_wagers() {
 
     // Game completes successfully with asymmetric wagers
     let final_game = client.get_game(&session_id);
-    assert_eq!(final_game.status, GameStatus::Ended);
+    assert!(final_game.winner.is_some()); // Game has ended
 }
 
 // ============================================================================

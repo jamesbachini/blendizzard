@@ -11,18 +11,12 @@ pub enum Error {
     // ========================================================================
     // Admin errors (1-9)
     // ========================================================================
-    /// Caller is not the admin
-    NotAdmin = 1,
-
     /// Contract has already been initialized
     AlreadyInitialized = 2,
 
     // ========================================================================
     // Player errors (10-19)
     // ========================================================================
-    /// Player has insufficient balance for the requested operation
-    InsufficientBalance = 10,
-
     /// Player has insufficient faction points for the requested wager
     InsufficientFactionPoints = 11,
 
@@ -59,11 +53,8 @@ pub enum Error {
     /// Game outcome data is invalid
     InvalidGameOutcome = 24,
 
-    /// Proof verification failed (ZK proof is invalid)
-    ProofVerificationFailed = 25,
-
     /// Game is from a previous epoch and cannot be completed
-    GameExpired = 26,
+    GameExpired = 25,
 
     // ========================================================================
     // Epoch errors (30-39)
@@ -92,14 +83,8 @@ pub enum Error {
     // ========================================================================
     // External contract errors (50-59)
     // ========================================================================
-    /// fee-vault-v2 operation failed
-    FeeVaultError = 50,
-
     /// Soroswap swap operation failed
     SwapError = 51,
-
-    /// Token transfer operation failed
-    TokenTransferError = 52,
 
     // ========================================================================
     // Math errors (60-69)

@@ -7,7 +7,7 @@ use super::fee_vault_utils::{create_mock_vault, MockVaultClient};
 use super::testutils::{create_blendizzard_contract, setup_test_env};
 use crate::BlendizzardClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{vec, Address, Bytes, Env};
+use soroban_sdk::{vec, Address, Env};
 
 // ============================================================================
 // Test Setup Helpers
@@ -15,12 +15,7 @@ use soroban_sdk::{vec, Address, Bytes, Env};
 
 fn setup_math_test_env<'a>(
     env: &'a Env,
-) -> (
-    Address,
-    Address,
-    MockVaultClient<'a>,
-    BlendizzardClient<'a>,
-) {
+) -> (Address, Address, MockVaultClient<'a>, BlendizzardClient<'a>) {
     use super::soroswap_utils::{add_liquidity, create_factory, create_router, create_token};
 
     let admin = Address::generate(env);
@@ -105,15 +100,20 @@ fn test_withdrawal_reset_50_percent_exactly() {
 
     // Play a game in epoch 0 to lock faction and establish baseline
     env.ledger().with_mut(|li| li.timestamp = 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data = blendizzard.get_player(&player1);
     let initial_time_start = player_data.time_multiplier_start;
 
     // End game
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 1, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     // Cycle to epoch 1
     env.ledger().with_mut(|li| li.timestamp = 1000 + 345_600);
@@ -123,8 +123,16 @@ fn test_withdrawal_reset_50_percent_exactly() {
     mock_vault.set_user_balance(&player1, &500_0000000);
 
     // Start new game in epoch 1 - this triggers withdrawal check
-    env.ledger().with_mut(|li| li.timestamp = 1000 + 345_600 + 100);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = 1000 + 345_600 + 100);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     // Verify: At exactly 50%, time should NOT reset
     let player_data_after = blendizzard.get_player(&player1);
@@ -156,24 +164,39 @@ fn test_withdrawal_reset_50_01_percent_triggers() {
     let epoch0 = blendizzard.get_epoch(&0);
     let epoch_start = epoch0.start_time;
 
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 1000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data = blendizzard.get_player(&player1);
     let initial_time_start = player_data.time_multiplier_start;
 
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 1, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600);
     blendizzard.cycle_epoch();
 
     // Withdraw 50.01% (4999 USDC remaining from 10000)
     mock_vault.set_user_balance(&player1, &4999_0000000);
 
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data_after = blendizzard.get_player(&player1);
     let new_time_start = player_data_after.time_multiplier_start;
@@ -206,14 +229,19 @@ fn test_withdrawal_reset_49_99_percent_no_trigger() {
     mock_vault.set_user_balance(&player2, &1000_0000000);
 
     env.ledger().with_mut(|li| li.timestamp = 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data = blendizzard.get_player(&player1);
     let initial_time_start = player_data.time_multiplier_start;
 
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 1, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     env.ledger().with_mut(|li| li.timestamp = 1000 + 345_600);
     let _ = blendizzard.try_cycle_epoch();
@@ -221,8 +249,16 @@ fn test_withdrawal_reset_49_99_percent_no_trigger() {
     // Withdraw 49.99% (5001 USDC remaining from 10000)
     mock_vault.set_user_balance(&player1, &5001_0000000);
 
-    env.ledger().with_mut(|li| li.timestamp = 1000 + 345_600 + 100);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = 1000 + 345_600 + 100);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data_after = blendizzard.get_player(&player1);
     assert_eq!(
@@ -259,7 +295,14 @@ fn test_fp_calculation_rounds_down() {
     env.ledger().with_mut(|li| li.timestamp = 1000);
     env.ledger().with_mut(|li| li.timestamp = 1000 + 7777); // 7777 seconds
 
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let epoch_player = blendizzard.get_epoch_player(&0, &player1);
     let total_fp = epoch_player.available_fp;
@@ -311,25 +354,10 @@ fn test_reward_calculation_rounds_down() {
 
     // Start and end games (all contribute FP)
     blendizzard.start_game(&game_contract, &1, &p1, &p2, &100_0000000, &100_0000000);
-    let proof = Bytes::new(&env);
-    let outcome1 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: p1.clone(),
-        player2: p2.clone(),
-        winner: true,
-    };
-    blendizzard.end_game(&proof, &outcome1);
+    blendizzard.end_game(&1, &true);
 
     blendizzard.start_game(&game_contract, &2, &p1, &p3, &100_0000000, &100_0000000);
-    let outcome2 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 2,
-        player1: p1.clone(),
-        player2: p3.clone(),
-        winner: true,
-    };
-    blendizzard.end_game(&proof, &outcome2);
+    blendizzard.end_game(&2, &true);
 
     // Cycle epoch - this creates reward pool
     env.ledger().with_mut(|li| li.timestamp = 1000 + 345_600);
@@ -386,14 +414,19 @@ fn test_withdrawal_reset_net_change_only() {
     mock_vault.set_user_balance(&player2, &1000_0000000);
 
     env.ledger().with_mut(|li| li.timestamp = 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data = blendizzard.get_player(&player1);
     let initial_time_start = player_data.time_multiplier_start;
 
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 1, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     env.ledger().with_mut(|li| li.timestamp = 1000 + 345_600);
     let _ = blendizzard.try_cycle_epoch();
@@ -402,8 +435,16 @@ fn test_withdrawal_reset_net_change_only() {
     // Final balance: 600 USDC (40% withdrawn)
     mock_vault.set_user_balance(&player1, &600_0000000);
 
-    env.ledger().with_mut(|li| li.timestamp = 1000 + 345_600 + 100);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = 1000 + 345_600 + 100);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     // Verify: 40% net withdrawal should NOT trigger reset
     let player_data_after = blendizzard.get_player(&player1);
@@ -432,14 +473,19 @@ fn test_withdrawal_reset_with_redeposit() {
     mock_vault.set_user_balance(&player2, &1000_0000000);
 
     env.ledger().with_mut(|li| li.timestamp = 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let player_data = blendizzard.get_player(&player1);
     let initial_time_start = player_data.time_multiplier_start;
 
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome { game_id: game_contract.clone(), session_id: 1, player1: player1.clone(), player2: player2.clone(), winner: true };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     env.ledger().with_mut(|li| li.timestamp = 1000 + 345_600);
     let _ = blendizzard.try_cycle_epoch();
@@ -447,8 +493,16 @@ fn test_withdrawal_reset_with_redeposit() {
     // Net balance: 900 USDC (90% of original, only -10% net change)
     mock_vault.set_user_balance(&player1, &900_0000000);
 
-    env.ledger().with_mut(|li| li.timestamp = 1000 + 345_600 + 100);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = 1000 + 345_600 + 100);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     // Verify: Net change only -10%, should NOT trigger reset
     let player_data_after = blendizzard.get_player(&player1);

@@ -10,8 +10,7 @@
 //! Blendizzard contract. Games cannot be started or completed without FP involvement.
 
 use soroban_sdk::{
-    contract, contractclient, contracterror, contractimpl, contracttype, Address, Bytes, BytesN,
-    Env,
+    contract, contractclient, contracterror, contractimpl, contracttype, Address, BytesN, Env,
 };
 
 // Import Blendizzard contract interface
@@ -28,18 +27,7 @@ pub trait Blendizzard {
         player2_wager: i128,
     );
 
-    fn end_game(env: Env, proof: Bytes, outcome: GameOutcome);
-}
-
-// GameOutcome must match Blendizzard's definition
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GameOutcome {
-    pub game_id: Address,
-    pub session_id: u32,
-    pub player1: Address,
-    pub player2: Address,
-    pub winner: bool,
+    fn end_game(env: Env, session_id: u32, player1_won: bool);
 }
 
 // ============================================================================
@@ -51,14 +39,11 @@ pub struct GameOutcome {
 #[repr(u32)]
 pub enum Error {
     GameNotFound = 1,
-    GameAlreadyStarted = 2,
     NotPlayer = 3,
     AlreadyGuessed = 4,
     BothPlayersNotGuessed = 5,
     GameAlreadyEnded = 6,
     NotInitialized = 7,
-    AlreadyInitialized = 8,
-    NotAdmin = 9,
 }
 
 // ============================================================================
@@ -78,13 +63,6 @@ pub enum Error {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum GameStatus {
-    Active,
-    Ended,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Game {
     pub player1: Address,
     pub player2: Address,
@@ -93,7 +71,6 @@ pub struct Game {
     pub player1_guess: Option<u32>,
     pub player2_guess: Option<u32>,
     pub winning_number: Option<u32>,
-    pub status: GameStatus,
     pub winner: Option<Address>,
 }
 
@@ -196,7 +173,6 @@ impl NumberGuessContract {
             player1_guess: None,
             player2_guess: None,
             winning_number: None,
-            status: GameStatus::Active,
             winner: None,
         };
 
@@ -237,8 +213,8 @@ impl NumberGuessContract {
             .get(&key)
             .ok_or(Error::GameNotFound)?;
 
-        // Check game is active
-        if game.status == GameStatus::Ended {
+        // Check game is still active (no winner yet)
+        if game.winner.is_some() {
             return Err(Error::GameAlreadyEnded);
         }
 
@@ -283,9 +259,9 @@ impl NumberGuessContract {
             .get(&key)
             .ok_or(Error::GameNotFound)?;
 
-        // Check game is active
-        if game.status == GameStatus::Ended {
-            return Ok(game.winner.unwrap());
+        // Check if game already ended (has a winner)
+        if let Some(winner) = &game.winner {
+            return Ok(winner.clone());
         }
 
         // Check both players have guessed
@@ -317,8 +293,7 @@ impl NumberGuessContract {
             game.player2.clone()
         };
 
-        // Update game status
-        game.status = GameStatus::Ended;
+        // Update game with winner (this marks the game as ended)
         game.winner = Some(winner.clone());
         env.storage().temporary().set(&key, &game);
 
@@ -332,22 +307,11 @@ impl NumberGuessContract {
         // Create Blendizzard client
         let blendizzard = BlendizzardClient::new(&env, &blendizzard_addr);
 
-        // Create game outcome for Blendizzard
-        let outcome = GameOutcome {
-            game_id: env.current_contract_address(),
-            session_id,
-            player1: game.player1.clone(),
-            player2: game.player2.clone(),
-            winner: winner == game.player1, // true if player1 won
-        };
-
-        // Empty proof (MVP phase - verification handled client-side)
-        let proof = Bytes::new(&env);
-
         // Call Blendizzard to end the session
         // This unlocks FP and updates faction standings
         // Event emitted by Blendizzard contract (GameEnded)
-        blendizzard.end_game(&proof, &outcome);
+        let player1_won = winner == game.player1; // true if player1 won, false if player2 won
+        blendizzard.end_game(&session_id, &player1_won);
 
         Ok(winner)
     }

@@ -9,7 +9,7 @@ use super::fee_vault_utils::{create_mock_vault, MockVaultClient};
 use super::testutils::{create_blendizzard_contract, setup_test_env};
 use crate::BlendizzardClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{vec, Address, Bytes, Env};
+use soroban_sdk::{vec, Address, Env};
 
 // ============================================================================
 // Test Setup Helpers
@@ -17,12 +17,7 @@ use soroban_sdk::{vec, Address, Bytes, Env};
 
 fn setup_expiration_test_env<'a>(
     env: &'a Env,
-) -> (
-    Address,
-    Address,
-    MockVaultClient<'a>,
-    BlendizzardClient<'a>,
-) {
+) -> (Address, Address, MockVaultClient<'a>, BlendizzardClient<'a>) {
     use super::soroswap_utils::{add_liquidity, create_factory, create_router, create_token};
 
     let admin = Address::generate(env);
@@ -94,7 +89,7 @@ fn setup_expiration_test_env<'a>(
 /// 2. Waiting to see next epoch conditions
 /// 3. Only completing favorable games
 #[test]
-#[should_panic(expected = "Error(Contract, #26)")]
+#[should_panic(expected = "Error(Contract, #25)")]
 fn test_game_from_previous_epoch_cannot_complete() {
     let env = setup_test_env();
     let (game_contract, _vault_addr, mock_vault, blendizzard) = setup_expiration_test_env(&env);
@@ -114,26 +109,27 @@ fn test_game_from_previous_epoch_cannot_complete() {
     let epoch_start = epoch0.start_time;
 
     // Start game in epoch 0
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 1000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 1000);
     let current_epoch = blendizzard.get_current_epoch();
     assert_eq!(current_epoch, 0, "Should be in epoch 0");
 
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     // Cycle to epoch 1 (wait full epoch duration from epoch start)
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600);
     blendizzard.cycle_epoch();
 
     // Try to end the game in epoch 1 - should panic with GameExpired error (#26)
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: player1.clone(),
-        player2: player2.clone(),
-        winner: true,
-    };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 }
 
 /// Test that games expire on epoch cycle
@@ -160,7 +156,8 @@ fn test_games_expire_on_epoch_cycle() {
     let epoch_start = epoch0.start_time;
 
     // Start multiple games in epoch 0
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 1000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 1000);
     blendizzard.start_game(&game_contract, &1, &p1, &p2, &200_0000000, &300_0000000);
     blendizzard.start_game(&game_contract, &2, &p1, &p2, &100_0000000, &100_0000000);
 
@@ -179,36 +176,21 @@ fn test_games_expire_on_epoch_cycle() {
     assert!(initial_fp_p2 > 0, "P2 should have initial FP");
 
     // Cycle epoch
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600);
     blendizzard.cycle_epoch();
 
     // Try to complete games in new epoch - both should fail
-    let proof = Bytes::new(&env);
 
-    let outcome1 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: p1.clone(),
-        player2: p2.clone(),
-        winner: true,
-    };
-
-    let r1 = blendizzard.try_end_game(&proof, &outcome1);
+    let r1 = blendizzard.try_end_game(&1, &true);
     assert!(r1.is_err(), "P1's game should be expired");
 
-    let outcome2 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 2,
-        player1: p1.clone(),
-        player2: p2.clone(),
-        winner: true,
-    };
-
-    let r2 = blendizzard.try_end_game(&proof, &outcome2);
+    let r2 = blendizzard.try_end_game(&2, &true);
     assert!(r2.is_err(), "P2's game should be expired");
 
     // Start new games in epoch 1 to initialize epoch player data
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
     blendizzard.start_game(&game_contract, &3, &p1, &p2, &100_0000000, &100_0000000);
 
     // Verify epoch 1 data is calculated fresh (doesn't include expired locked FP)
@@ -256,24 +238,40 @@ fn test_fp_in_expired_games_stays_locked() {
     let epoch_start = epoch0.start_time;
 
     // Start game with wager
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &500_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 1000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &500_0000000,
+        &100_0000000,
+    );
 
     // Check initial FP allocation
-    let epoch0_before =
-        blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player1);
+    let epoch0_before = blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player1);
 
     // Calculate initial FP by adding back the locked wager
     let initial_fp = epoch0_before.available_fp + 500_0000000;
     assert!(initial_fp > 0, "Should have initial FP");
 
     // Cycle epoch (game expires)
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600);
     blendizzard.cycle_epoch();
 
     // Start a new game in epoch 1 to get fresh FP calculation
-    env.ledger().with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &100_0000000, &100_0000000);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch_start + 345_600 + 100);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let epoch1 = blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player1);
 

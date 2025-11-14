@@ -11,7 +11,7 @@ use super::fee_vault_utils::{create_mock_vault, MockVaultClient};
 use super::testutils::{create_blendizzard_contract, setup_test_env};
 use crate::BlendizzardClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{vec, Address, Bytes, Env};
+use soroban_sdk::{vec, Address, Env};
 
 // ============================================================================
 // Test Setup Helpers
@@ -19,12 +19,7 @@ use soroban_sdk::{vec, Address, Bytes, Env};
 
 fn setup_epoch_test_env<'a>(
     env: &'a Env,
-) -> (
-    Address,
-    Address,
-    MockVaultClient<'a>,
-    BlendizzardClient<'a>,
-) {
+) -> (Address, Address, MockVaultClient<'a>, BlendizzardClient<'a>) {
     use super::soroswap_utils::{add_liquidity, create_factory, create_router, create_token};
 
     let admin = Address::generate(env);
@@ -110,7 +105,8 @@ fn test_epoch_cycle_before_duration_fails() {
     );
 
     // Try after 3 days (still too early)
-    env.ledger().with_mut(|li| li.timestamp = start_time + (3 * 24 * 60 * 60));
+    env.ledger()
+        .with_mut(|li| li.timestamp = start_time + (3 * 24 * 60 * 60));
     let result2 = blendizzard.try_cycle_epoch();
 
     assert!(
@@ -119,7 +115,8 @@ fn test_epoch_cycle_before_duration_fails() {
     );
 
     // After exactly 4 days, should succeed
-    env.ledger().with_mut(|li| li.timestamp = start_time + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = start_time + 345_600);
     let result3 = blendizzard.try_cycle_epoch();
 
     assert!(
@@ -149,7 +146,8 @@ fn test_epoch_cycle_with_no_games_played() {
     // DON'T play any games
 
     // Fast forward 4 days
-    env.ledger().with_mut(|li| li.timestamp = start_time + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = start_time + 345_600);
 
     // Cycle should succeed even with no activity
     blendizzard.cycle_epoch();
@@ -203,28 +201,13 @@ fn test_epoch_cycle_with_tie_in_standings() {
     blendizzard.start_game(&game_contract, &1, &p1, &p2, &100_0000000, &100_0000000);
 
     // P1 wins
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: p1.clone(),
-        player2: p2.clone(),
-        winner: true, // p1 wins
-    };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     // Play second game
     blendizzard.start_game(&game_contract, &2, &p1, &p2, &100_0000000, &100_0000000);
 
-    // P2 wins
-    let outcome2 = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 2,
-        player1: p1.clone(),
-        player2: p2.clone(),
-        winner: false, // p2 wins
-    };
-    blendizzard.end_game(&proof, &outcome2);
+    // P2 wins (player1_won = false)
+    blendizzard.end_game(&2, &false);
 
     // Verify standings are equal (both contributed 100 FP)
     let epoch0_before = blendizzard.get_epoch(&0);
@@ -235,13 +218,18 @@ fn test_epoch_cycle_with_tie_in_standings() {
     assert_eq!(standings_1, 100_0000000, "Faction 1 should have 100 FP");
 
     // Cycle epoch
-    env.ledger().with_mut(|li| li.timestamp = start_time + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = start_time + 345_600);
     blendizzard.cycle_epoch();
 
     let epoch0_after = blendizzard.get_epoch(&0);
 
     // In case of exact tie, lowest faction ID (0) should win
-    assert_eq!(epoch0_after.winning_faction, Some(0), "Faction 0 should win tie");
+    assert_eq!(
+        epoch0_after.winning_faction,
+        Some(0),
+        "Faction 0 should win tie"
+    );
 
     // At minimum, verify epoch cycled successfully
     let current_epoch = blendizzard.get_current_epoch();
@@ -277,21 +265,14 @@ fn test_epoch_cycle_swap_failure_handling() {
 
     blendizzard.start_game(&game_contract, &1, &player, &p2, &100_0000000, &100_0000000);
 
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: player.clone(),
-        player2: p2.clone(),
-        winner: true,
-    };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     // DON'T set up proper liquidity for BLND→USDC swap
     // (In test environment, swap will fail or return 0)
 
     // Cycle epoch - should succeed despite swap issues
-    env.ledger().with_mut(|li| li.timestamp = start_time + 345_600);
+    env.ledger()
+        .with_mut(|li| li.timestamp = start_time + 345_600);
 
     // This may panic or succeed with zero rewards depending on implementation
     // If it panics, that's a bug - epoch cycling should be resilient

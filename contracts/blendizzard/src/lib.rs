@@ -17,9 +17,10 @@
 //! - soroban-fixed-point-math: Safe fixed-point arithmetic
 
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, Val, Vec, auth::{
-        Context, CustomAccountInterface,
-    }, contract, contractimpl, crypto::Hash, vec
+    auth::{Context, CustomAccountInterface},
+    contract, contractimpl,
+    crypto::Hash,
+    vec, Address, BytesN, Env, Val, Vec,
 };
 
 mod errors;
@@ -39,7 +40,7 @@ mod fee_vault_v2;
 mod router;
 
 use errors::Error;
-use types::{Config, EpochInfo, GameOutcome};
+use types::{Config, EpochInfo};
 
 // ============================================================================
 // Contract Definition
@@ -430,15 +431,21 @@ impl Blendizzard {
     ///
     /// Requires game contract authorization. Both players' FP wagers are spent/burned.
     /// Only the winner's wager contributes to their faction standings.
-    /// ZK proof verification handled client-side for MVP.
+    ///
+    /// Outcome verification is handled by the individual game contracts.
+    /// Each game is responsible for implementing its own verification mechanism
+    /// (multi-sig oracle, ZK proofs, etc.) before calling this function.
+    ///
+    /// # Arguments
+    /// * `session_id` - The unique session identifier
+    /// * `player1_won` - true if player1 won, false if player2 won
     ///
     /// # Errors
     /// * `SessionNotFound` - If session doesn't exist
     /// * `InvalidSessionState` - If session is not Pending
-    /// * `InvalidGameOutcome` - If outcome data doesn't match session
-    /// * `ProofVerificationFailed` - If ZK proof is invalid
-    pub fn end_game(env: Env, proof: Bytes, outcome: GameOutcome) -> Result<(), Error> {
-        game::end_game(&env, &proof, &outcome)
+    /// * `GameExpired` - If game is from a previous epoch
+    pub fn end_game(env: Env, session_id: u32, player1_won: bool) -> Result<(), Error> {
+        game::end_game(&env, session_id, player1_won)
     }
 
     // ========================================================================

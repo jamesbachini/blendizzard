@@ -1,11 +1,11 @@
-use soroban_sdk::{Address, Bytes, Env};
+use soroban_sdk::{Address, Env};
 
 use crate::errors::Error;
 use crate::events::{emit_game_ended, emit_game_started};
 use crate::faction::lock_epoch_faction;
 use crate::faction_points::{initialize_epoch_fp, lock_fp};
 use crate::storage;
-use crate::types::{GameOutcome, GameSession, GameStatus};
+use crate::types::{GameSession, GameStatus};
 
 // ============================================================================
 // Game Registry
@@ -161,7 +161,7 @@ pub(crate) fn start_game(
         player1_wager,
         player2_wager,
         status: GameStatus::Pending,
-        winner: None,
+        player1_won: None,
         created_at: env.ledger().timestamp(),
     };
 
@@ -184,29 +184,26 @@ pub(crate) fn start_game(
 
 /// End a game session with outcome verification
 ///
-/// From PLAN.md:
-/// "Requires risc0 or noir proof"
-/// "Output: game_id, session_id, player 1 address, player 2 address,
-///          winner (true for player 1, false for player 2)"
+/// Outcome verification is handled by the individual game contracts.
+/// Each game is responsible for implementing its own verification mechanism
+/// (multi-sig oracle, ZK proofs, etc.) before calling this function.
 ///
 /// # Arguments
 /// * `env` - Contract environment
-/// * `proof` - ZK proof placeholder (verification handled client-side for MVP)
-/// * `outcome` - Game outcome data (contains game_id, session_id, players, winner)
+/// * `session_id` - The unique session identifier
+/// * `player1_won` - true if player1 won, false if player2 won
 ///
 /// # Errors
 /// * `SessionNotFound` - If session doesn't exist
 /// * `InvalidSessionState` - If session is not in Pending state
-/// * `InvalidGameOutcome` - If outcome data doesn't match session
-/// * `ProofVerificationFailed` - If ZK proof is invalid (future implementation)
-pub(crate) fn end_game(env: &Env, proof: &Bytes, outcome: &GameOutcome) -> Result<(), Error> {
+/// * `GameExpired` - If game is from a previous epoch
+pub(crate) fn end_game(env: &Env, session_id: u32, player1_won: bool) -> Result<(), Error> {
+    // Get session
+    let mut session = storage::get_session(env, session_id).ok_or(Error::SessionNotFound)?;
+
     // SECURITY: Require game contract to authorize this call
     // Only the whitelisted game contract should be able to submit outcomes
-    outcome.game_id.require_auth();
-
-    // Get session
-    let mut session =
-        storage::get_session(env, outcome.session_id).ok_or(Error::SessionNotFound)?;
+    session.game_id.require_auth();
 
     // Validate session state
     if session.status != GameStatus::Pending {
@@ -220,21 +217,8 @@ pub(crate) fn end_game(env: &Env, proof: &Bytes, outcome: &GameOutcome) -> Resul
         return Err(Error::GameExpired);
     }
 
-    // Validate outcome matches session
-    if outcome.game_id != session.game_id
-        || outcome.player1 != session.player1
-        || outcome.player2 != session.player2
-    {
-        return Err(Error::InvalidGameOutcome);
-    }
-
-    // Proof verification (currently placeholder for MVP)
-    // Phase 1-2: Multi-sig oracle handled client-side before calling end_game
-    // Phase 4: On-chain ZK proof verification (risc0/noir) when WASM verifier available
-    verify_proof(env, proof, outcome)?;
-
     // Determine winner and loser
-    let (winner, loser, winner_wager, _loser_wager) = if outcome.winner {
+    let (winner, loser, winner_wager, _loser_wager) = if player1_won {
         // Player1 won
         (
             &session.player1,
@@ -272,8 +256,8 @@ pub(crate) fn end_game(env: &Env, proof: &Bytes, outcome: &GameOutcome) -> Resul
 
     // Update session
     session.status = GameStatus::Completed;
-    session.winner = Some(outcome.winner);
-    storage::set_session(env, outcome.session_id, &session);
+    session.player1_won = Some(player1_won);
+    storage::set_session(env, session_id, &session);
 
     // Update faction standings (only winner's wager contributes)
     update_faction_standings(env, winner, winner_wager, current_epoch)?;
@@ -281,8 +265,8 @@ pub(crate) fn end_game(env: &Env, proof: &Bytes, outcome: &GameOutcome) -> Resul
     // Emit event (only winner's wager counts as contribution)
     emit_game_ended(
         env,
-        &outcome.game_id,
-        outcome.session_id,
+        &session.game_id,
+        session_id,
         winner,
         loser,
         winner_wager,
@@ -340,27 +324,6 @@ fn initialize_player_epoch(env: &Env, player: &Address, current_epoch: u32) -> R
     player_data.last_epoch_balance = current_balance;
     storage::set_player(env, player, &player_data);
 
-    Ok(())
-}
-
-/// Verify ZK proof (Placeholder for MVP)
-///
-/// **Current Implementation (Phase 1-2):**
-/// - Returns Ok() without verification (placeholder)
-/// - Multi-sig oracle verification handled client-side
-/// - Game contract authorization via require_auth() provides security
-///
-/// **Future Implementation (Phase 4):**
-/// When WASM-based ZK verifiers are available on Soroban:
-/// - Verify risc0 or noir proofs on-chain
-/// - Example: `verifier.verify(proof, &encode_outcome(outcome))?`
-///
-/// This function will be updated when:
-/// 1. Multi-sig oracle needs on-chain verification, or
-/// 2. ZK proof WASM verifiers become available on Soroban
-fn verify_proof(_env: &Env, _proof: &Bytes, _outcome: &GameOutcome) -> Result<(), Error> {
-    // Placeholder - always succeeds
-    // Security provided by game_id.require_auth() in end_game()
     Ok(())
 }
 

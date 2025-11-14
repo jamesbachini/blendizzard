@@ -125,7 +125,7 @@ pub struct GameSession {
 
     /// Winner of the game (None until completed)
     /// true = player1 won, false = player2 won
-    pub winner: Option<bool>,
+    pub player1_won: Option<bool>,
 
     /// Timestamp when game was created
     pub created_at: u64,
@@ -143,34 +143,6 @@ pub enum GameStatus {
 
     /// Game was cancelled (e.g., timeout)
     Cancelled,
-}
-
-// ============================================================================
-// Function Input/Output Types
-// ============================================================================
-
-/// Game outcome for verification
-///
-/// This is the data structure that should be proven by the ZK proof.
-/// The proof verifies that these values are correct based on game execution.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GameOutcome {
-    /// Game contract address
-    pub game_id: Address,
-
-    /// Unique session identifier
-    pub session_id: u32,
-
-    /// First player's address
-    pub player1: Address,
-
-    /// Second player's address
-    pub player2: Address,
-
-    /// Winner of the game
-    /// true = player1 won, false = player2 won
-    pub winner: bool,
 }
 
 // ============================================================================

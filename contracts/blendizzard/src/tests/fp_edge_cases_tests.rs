@@ -9,7 +9,7 @@ use super::fee_vault_utils::{create_mock_vault, MockVaultClient};
 use super::testutils::{create_blendizzard_contract, setup_test_env};
 use crate::BlendizzardClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{vec, Address, Bytes, Env};
+use soroban_sdk::{vec, Address, Env};
 
 // ============================================================================
 // Test Setup Helpers
@@ -17,12 +17,7 @@ use soroban_sdk::{vec, Address, Bytes, Env};
 
 fn setup_fp_test_env<'a>(
     env: &'a Env,
-) -> (
-    Address,
-    Address,
-    MockVaultClient<'a>,
-    BlendizzardClient<'a>,
-) {
+) -> (Address, Address, MockVaultClient<'a>, BlendizzardClient<'a>) {
     let admin = Address::generate(env);
     let game_contract = Address::generate(env);
 
@@ -79,7 +74,14 @@ fn test_fp_with_zero_vault_balance() {
 
     // Try to start game with player1 having 0 vault balance
     // Should panic with InsufficientFactionPoints (Error #11)
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 }
 
 /// Test FP calculation with maximum vault balance
@@ -129,8 +131,7 @@ fn test_fp_with_max_vault_balance() {
 
     // Verify balance snapshot was recorded
     assert_eq!(
-        epoch_player.epoch_balance_snapshot,
-        huge_amount,
+        epoch_player.epoch_balance_snapshot, huge_amount,
         "Balance snapshot should match vault balance"
     );
 }
@@ -156,7 +157,14 @@ fn test_fp_with_zero_time_held() {
     mock_vault.set_user_balance(&player2, &1000_0000000);
 
     // Start game at same timestamp as deposit initialization
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let current_epoch = blendizzard.get_current_epoch();
     let epoch_player = blendizzard.get_epoch_player(&current_epoch, &player1);
@@ -169,7 +177,10 @@ fn test_fp_with_zero_time_held() {
 
     // available_fp is what remains after locking the wager
     // It should be positive (initial FP - 100 USDC wager)
-    assert!(epoch_player.available_fp > 0, "Available FP should be positive after locking wager");
+    assert!(
+        epoch_player.available_fp > 0,
+        "Available FP should be positive after locking wager"
+    );
 
     // With time=0, time_mult = 1.0 (minimum)
     // Initial FP = base × amount_mult × 1.0
@@ -199,24 +210,30 @@ fn test_fp_with_max_time_held() {
     env.ledger().with_mut(|li| li.timestamp = 1000);
 
     // Start first game to initialize time_multiplier_start
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: player1.clone(),
-        player2: player2.clone(),
-        winner: true,
-    };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     // Fast forward 60 days (2x the asymptote)
     let sixty_days = 60 * 24 * 60 * 60; // 5,184,000 seconds
     env.ledger().with_mut(|li| li.timestamp = 1000 + sixty_days);
 
     // Start game after 60 days
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &100_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &100_0000000,
+        &100_0000000,
+    );
 
     let current_epoch = blendizzard.get_current_epoch();
     let epoch_player = blendizzard.get_epoch_player(&current_epoch, &player1);
@@ -256,24 +273,31 @@ fn test_fp_multiplier_caps_at_maximum() {
 
     // Initialize time
     env.ledger().with_mut(|li| li.timestamp = 1000);
-    blendizzard.start_game(&game_contract, &1, &player1, &player2, &1000_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &1,
+        &player1,
+        &player2,
+        &1000_0000000,
+        &100_0000000,
+    );
 
-    let proof = Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: 1,
-        player1: player1.clone(),
-        player2: player2.clone(),
-        winner: true,
-    };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&1, &true);
 
     // Wait 100 days (way past asymptote)
     let hundred_days = 100 * 24 * 60 * 60;
-    env.ledger().with_mut(|li| li.timestamp = 1000 + hundred_days);
+    env.ledger()
+        .with_mut(|li| li.timestamp = 1000 + hundred_days);
 
     // Start game with both multipliers maxed
-    blendizzard.start_game(&game_contract, &2, &player1, &player2, &1000_0000000, &100_0000000);
+    blendizzard.start_game(
+        &game_contract,
+        &2,
+        &player1,
+        &player2,
+        &1000_0000000,
+        &100_0000000,
+    );
 
     let current_epoch = blendizzard.get_current_epoch();
     let epoch_player = blendizzard.get_epoch_player(&current_epoch, &player1);
@@ -285,12 +309,14 @@ fn test_fp_multiplier_caps_at_maximum() {
 
     // available_fp is what remains after locking 1000 USDC wager
     // Verify FP is finite and reasonable
-    assert!(epoch_player.available_fp > 0, "Available FP should be positive");
+    assert!(
+        epoch_player.available_fp > 0,
+        "Available FP should be positive"
+    );
 
     // Balance snapshot should be the huge amount
     assert_eq!(
-        epoch_player.epoch_balance_snapshot,
-        huge_amount,
+        epoch_player.epoch_balance_snapshot, huge_amount,
         "Balance snapshot should be recorded"
     );
 

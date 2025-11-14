@@ -145,15 +145,7 @@ fn test_end_game_spends_fp_and_updates_faction_standings() {
     let p1_initial = blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player1);
 
     // End game (player1 wins)
-    let proof = soroban_sdk::Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: session_id.clone(),
-        player1: player1.clone(),
-        player2: player2.clone(),
-        winner: true, // player1 wins
-    };
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&session_id, &true);
 
     // Verify FP spending (both players lose their wagers)
     let p1_final = blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player1);
@@ -184,7 +176,8 @@ fn test_faction_locks_on_first_game() {
     blendizzard.select_faction(&player, &0);
 
     // Faction should not be locked yet (check via get_epoch_player)
-    let epoch_player_before = blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player);
+    let epoch_player_before =
+        blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player);
     assert_eq!(
         epoch_player_before.epoch_faction, None,
         "Faction should not be locked before first game"
@@ -206,7 +199,8 @@ fn test_faction_locks_on_first_game() {
     );
 
     // Faction should now be locked (check via get_epoch_player)
-    let epoch_player_after = blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player);
+    let epoch_player_after =
+        blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player);
     assert_eq!(
         epoch_player_after.epoch_faction,
         Some(0),
@@ -217,7 +211,8 @@ fn test_faction_locks_on_first_game() {
     blendizzard.select_faction(&player, &1); // Try to switch to PointyStick
 
     // Epoch faction should remain locked
-    let epoch_player_after = blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player);
+    let epoch_player_after =
+        blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player);
     assert_eq!(
         epoch_player_after.epoch_faction,
         Some(0),
@@ -257,18 +252,8 @@ fn test_session_stores_epoch_id() {
         &wager,
     );
 
-    // Verify session exists and can be completed in same epoch
-    let proof = soroban_sdk::Bytes::new(&env);
-    let outcome = crate::types::GameOutcome {
-        game_id: game_contract.clone(),
-        session_id: session_id.clone(),
-        player1: player1.clone(),
-        player2: player2.clone(),
-        winner: true,
-    };
-
     // This should succeed because we're in the same epoch
-    blendizzard.end_game(&proof, &outcome);
+    blendizzard.end_game(&session_id, &true);
 
     // Verify game completed
     let p1_epoch = blendizzard.get_epoch_player(&blendizzard.get_current_epoch(), &player1);
