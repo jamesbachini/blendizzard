@@ -8,6 +8,8 @@ interface NumberGuessGameProps {
   userAddress: string;
   currentEpoch: number;
   availableFP: bigint;
+  initialXDR?: string | null;
+  initialSessionId?: number | null;
   onBack: () => void;
   onStandingsRefresh: () => void;
   onGameComplete: () => void;
@@ -16,6 +18,8 @@ interface NumberGuessGameProps {
 export function NumberGuessGame({
   userAddress,
   availableFP,
+  initialXDR,
+  initialSessionId,
   onBack,
   onStandingsRefresh,
   onGameComplete
@@ -37,6 +41,7 @@ export function NumberGuessGame({
   const [importXDR, setImportXDR] = useState('');
   const [loadSessionId, setLoadSessionId] = useState('');
   const [xdrCopied, setXdrCopied] = useState(false);
+  const [shareUrlCopied, setShareUrlCopied] = useState(false);
   const [xdrDetails, setXdrDetails] = useState<{
     sessionId: number;
     player1: string;
@@ -101,6 +106,21 @@ export function NumberGuessGame({
       onStandingsRefresh(); // This refreshes both standings and Dashboard FP - don't call onGameComplete() here or it will close the game!
     }
   }, [gamePhase, gameState?.winner]);
+
+  // Handle initial values from URL deep linking
+  useEffect(() => {
+    if (initialXDR) {
+      console.log('Auto-populating XDR from URL');
+      setCreateMode('import');
+      setImportXDR(initialXDR);
+    }
+
+    if (initialSessionId !== null && initialSessionId !== undefined) {
+      console.log('Auto-populating session ID from URL:', initialSessionId);
+      setCreateMode('load');
+      setLoadSessionId(initialSessionId.toString());
+    }
+  }, [initialXDR, initialSessionId]);
 
   // Parse XDR details when import XDR changes
   useEffect(() => {
@@ -374,6 +394,35 @@ export function NumberGuessGame({
     }
   };
 
+  const copyShareGameUrlWithXDR = async () => {
+    if (exportedXDR) {
+      try {
+        const encodedXDR = encodeURIComponent(exportedXDR);
+        const shareUrl = `${window.location.origin}${window.location.pathname}?game=number-guess&xdr=${encodedXDR}`;
+        await navigator.clipboard.writeText(shareUrl);
+        setShareUrlCopied(true);
+        setTimeout(() => setShareUrlCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy share URL:', err);
+        setError('Failed to copy to clipboard');
+      }
+    }
+  };
+
+  const copyShareGameUrlWithSessionId = async () => {
+    if (loadSessionId) {
+      try {
+        const shareUrl = `${window.location.origin}${window.location.pathname}?game=number-guess&session-id=${loadSessionId}`;
+        await navigator.clipboard.writeText(shareUrl);
+        setShareUrlCopied(true);
+        setTimeout(() => setShareUrlCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy share URL:', err);
+        setError('Failed to copy to clipboard');
+      }
+    }
+  };
+
   const handleMakeGuess = async () => {
     if (guess === null) {
       setError('Select a number to guess');
@@ -606,15 +655,23 @@ export function NumberGuessGame({
                       {exportedXDR}
                     </code>
                   </div>
-                  <button
-                    onClick={copyXDRToClipboard}
-                    className="w-full py-3 rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-sm transition-all shadow-md hover:shadow-lg transform hover:scale-105 relative"
-                  >
-                    {xdrCopied ? '✓ Copied!' : '📋 Copy XDR to Clipboard'}
-                  </button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={copyXDRToClipboard}
+                      className="py-3 rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-sm transition-all shadow-md hover:shadow-lg transform hover:scale-105"
+                    >
+                      {xdrCopied ? '✓ Copied!' : '📋 Copy XDR'}
+                    </button>
+                    <button
+                      onClick={copyShareGameUrlWithXDR}
+                      className="py-3 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold text-sm transition-all shadow-md hover:shadow-lg transform hover:scale-105"
+                    >
+                      {shareUrlCopied ? '✓ Copied!' : '🔗 Share URL'}
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-gray-600 text-center font-semibold">
-                  Send this XDR to Player 2 to complete the transaction
+                  Copy the XDR or share URL with Player 2 to complete the transaction
                 </p>
               </div>
             )}
@@ -715,13 +772,25 @@ export function NumberGuessGame({
                 </ul>
               </div>
 
-              <button
-                onClick={handleLoadExistingGame}
-                disabled={loading || !loadSessionId.trim()}
-                className="w-full py-4 rounded-xl font-bold text-white text-lg bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 hover:from-green-600 hover:via-emerald-600 hover:to-teal-600 disabled:from-gray-200 disabled:to-gray-300 disabled:text-gray-500 transition-all shadow-xl hover:shadow-2xl transform hover:scale-105 disabled:transform-none"
-              >
-                {loading ? 'Loading Game...' : 'Load Game'}
-              </button>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleLoadExistingGame}
+                  disabled={loading || !loadSessionId.trim()}
+                  className="py-4 rounded-xl font-bold text-white text-lg bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 hover:from-green-600 hover:via-emerald-600 hover:to-teal-600 disabled:from-gray-200 disabled:to-gray-300 disabled:text-gray-500 transition-all shadow-xl hover:shadow-2xl transform hover:scale-105 disabled:transform-none"
+                >
+                  {loading ? 'Loading...' : '🎮 Load Game'}
+                </button>
+                <button
+                  onClick={copyShareGameUrlWithSessionId}
+                  disabled={!loadSessionId.trim()}
+                  className="py-4 rounded-xl font-bold text-white text-lg bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 disabled:from-gray-200 disabled:to-gray-300 disabled:text-gray-500 transition-all shadow-xl hover:shadow-2xl transform hover:scale-105 disabled:transform-none"
+                >
+                  {shareUrlCopied ? '✓ Copied!' : '🔗 Share Game'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-600 text-center font-semibold">
+                Load the game to continue playing, or share the URL with another player
+              </p>
             </div>
           ) : null}
         </div>

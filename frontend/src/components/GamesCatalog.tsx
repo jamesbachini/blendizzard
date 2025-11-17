@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NumberGuessGame } from './NumberGuessGame';
 import { GAME_CONTRACT } from '@/utils/constants';
 
@@ -26,6 +26,47 @@ const AVAILABLE_GAMES = [
 
 export function GamesCatalog({ userAddress, currentEpoch, availableFP, onGameComplete, onGameActiveChange }: GamesCatalogProps) {
   const [selectedGame, setSelectedGame] = useState<string | null>(null);
+  const [initialXDR, setInitialXDR] = useState<string | null>(null);
+  const [initialSessionId, setInitialSessionId] = useState<number | null>(null);
+
+  // Parse URL parameters on mount for deep linking
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gameParam = params.get('game');
+    const xdrParam = params.get('xdr');
+    const sessionIdParam = params.get('session-id');
+
+    if (gameParam && AVAILABLE_GAMES.find(g => g.id === gameParam)) {
+      console.log('Deep link detected:', { game: gameParam, hasXDR: !!xdrParam, sessionId: sessionIdParam });
+
+      // Auto-select the game
+      setSelectedGame(gameParam);
+      onGameActiveChange?.(true);
+
+      // Set initial values for the game
+      if (xdrParam) {
+        try {
+          const decodedXDR = decodeURIComponent(xdrParam);
+          setInitialXDR(decodedXDR);
+          console.log('Loaded XDR from URL');
+        } catch (err) {
+          console.error('Failed to decode XDR from URL:', err);
+        }
+      }
+
+      if (sessionIdParam) {
+        const sessionId = parseInt(sessionIdParam, 10);
+        if (!isNaN(sessionId)) {
+          setInitialSessionId(sessionId);
+          console.log('Loaded session ID from URL:', sessionId);
+        }
+      }
+
+      // Clean up URL parameters to avoid re-processing on refresh
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+    }
+  }, []);
 
   const handleSelectGame = (gameId: string) => {
     console.log('Game selected:', gameId);
@@ -48,6 +89,8 @@ export function GamesCatalog({ userAddress, currentEpoch, availableFP, onGameCom
           userAddress={userAddress}
           currentEpoch={currentEpoch}
           availableFP={availableFP}
+          initialXDR={initialXDR}
+          initialSessionId={initialSessionId}
           onBack={handleBackToGames}
           onStandingsRefresh={onGameComplete}
           onGameComplete={() => {
