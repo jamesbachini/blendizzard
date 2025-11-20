@@ -69,6 +69,8 @@ export async function signAndSendViaLaunchtube(
     address: tx.options.publicKey || tx.options.address,
   };
 
+  console.log('signOpts', signOpts);
+
   const { signedTxXdr, error } = await tx.options.signTransaction(
     correctedTx.toXDR(),
     signOpts
