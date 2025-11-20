@@ -1,7 +1,6 @@
 import type { ContractSigner } from '@/types/signer';
 import { walletService } from '@/services/walletService';
 import { devWalletService } from '@/services/devWalletService';
-import { xdr } from '@stellar/stellar-sdk';
 
 /**
  * Get a signer for wallet-connected users

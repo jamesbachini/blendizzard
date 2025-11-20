@@ -199,6 +199,13 @@ export class WalletService {
   getSelectedWalletId(): string | null {
     return this.selectedWalletId;
   }
+
+  /**
+   * Get the install link for Freighter wallet
+   */
+  getInstallLink(): string {
+    return 'https://www.freighter.app/';
+  }
 }
 
 // Export singleton instance

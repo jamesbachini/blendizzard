@@ -132,6 +132,13 @@ export function useWallet() {
     return DevWalletService.isPlayerAvailable(playerNumber);
   }, []);
 
+  /**
+   * Get the install link for wallet extension
+   */
+  const getInstallLink = useCallback(() => {
+    return walletService.getInstallLink();
+  }, []);
+
   return {
     // State
     publicKey,
@@ -151,5 +158,6 @@ export function useWallet() {
     getContractSigner,
     isDevModeAvailable,
     isDevPlayerAvailable,
+    getInstallLink,
   };
 }
