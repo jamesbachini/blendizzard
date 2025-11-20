@@ -11,7 +11,9 @@
 /// Uses REAL FeeVault to verify actual deposit behavior.
 use super::blend_utils::{create_blend_pool, EnvTestUtils};
 use super::fee_vault_utils::{create_fee_vault, FeeVaultClient};
-use super::soroswap_utils::{add_liquidity, create_factory, create_router, create_token, TokenClient};
+use super::soroswap_utils::{
+    add_liquidity, create_factory, create_router, create_token, TokenClient,
+};
 use super::testutils::{create_blendizzard_contract, setup_test_env};
 use crate::BlendizzardClient;
 use blend_contract_sdk::testutils::BlendFixture;
@@ -26,12 +28,12 @@ use soroban_sdk::{vec, Address, Env, Map};
 fn setup_reward_claim_env<'a>(
     env: &'a Env,
 ) -> (
-    Address,                      // game contract
-    Address,                      // fee vault address
-    FeeVaultClient<'a>,           // fee vault client
-    BlendizzardClient<'a>,        // blendizzard client
-    TokenClient<'a>,              // USDC token client
-    TokenClient<'a>,              // BLND token client
+    Address,               // game contract
+    Address,               // fee vault address
+    FeeVaultClient<'a>,    // fee vault client
+    BlendizzardClient<'a>, // blendizzard client
+    TokenClient<'a>,       // USDC token client
+    TokenClient<'a>,       // BLND token client
 ) {
     env.cost_estimate().budget().reset_unlimited();
     env.mock_all_auths();
@@ -105,7 +107,14 @@ fn setup_reward_claim_env<'a>(
 
     blendizzard.add_game(&game);
 
-    (game, fee_vault.address.clone(), fee_vault, blendizzard, usdc_token_client, blnd_token_client)
+    (
+        game,
+        fee_vault.address.clone(),
+        fee_vault,
+        blendizzard,
+        usdc_token_client,
+        blnd_token_client,
+    )
 }
 
 // ============================================================================

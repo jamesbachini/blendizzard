@@ -10,7 +10,8 @@
 //! Blendizzard contract. Games cannot be started or completed without FP involvement.
 
 use soroban_sdk::{
-    contract, contractclient, contracterror, contractimpl, contracttype, Address, Bytes, BytesN, Env,
+    contract, contractclient, contracterror, contractimpl, contracttype, Address, Bytes, BytesN,
+    Env,
 };
 
 // Import Blendizzard contract interface

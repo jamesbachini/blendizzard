@@ -167,10 +167,10 @@ pub(crate) fn start_game(
     storage::set_session(env, session_id, &session);
 
     // Get epoch player data for event emission
-    let p1_epoch_data = storage::get_epoch_player(env, current_epoch, player1)
-        .ok_or(Error::PlayerNotFound)?;
-    let p2_epoch_data = storage::get_epoch_player(env, current_epoch, player2)
-        .ok_or(Error::PlayerNotFound)?;
+    let p1_epoch_data =
+        storage::get_epoch_player(env, current_epoch, player1).ok_or(Error::PlayerNotFound)?;
+    let p2_epoch_data =
+        storage::get_epoch_player(env, current_epoch, player2).ok_or(Error::PlayerNotFound)?;
 
     // Emit event with enhanced data
     emit_game_started(
@@ -183,8 +183,8 @@ pub(crate) fn start_game(
         player2_wager,
         p1_epoch_data.epoch_faction.unwrap_or(0), // Should always be Some after lock_epoch_faction
         p2_epoch_data.epoch_faction.unwrap_or(0), // Should always be Some after lock_epoch_faction
-        p1_epoch_data.available_fp, // Remaining FP after wager deduction
-        p2_epoch_data.available_fp, // Remaining FP after wager deduction
+        p1_epoch_data.available_fp,               // Remaining FP after wager deduction
+        p2_epoch_data.available_fp,               // Remaining FP after wager deduction
     );
 
     Ok(())
@@ -319,7 +319,12 @@ fn initialize_player_epoch(env: &Env, player: &Address, current_epoch: u32) -> R
 
     // STEP 4: Check for cross-epoch withdrawal reset (>50%)
     // This may update time_multiplier_start in storage and emit TimeMultiplierReset event
-    let _reset = crate::vault::check_cross_epoch_withdrawal_reset(env, player, current_balance, current_epoch)?;
+    let _reset = crate::vault::check_cross_epoch_withdrawal_reset(
+        env,
+        player,
+        current_balance,
+        current_epoch,
+    )?;
 
     // STEP 5: Calculate FP based on current balance and multipliers
     // This calls initialize_epoch_fp which will use the balance we pass

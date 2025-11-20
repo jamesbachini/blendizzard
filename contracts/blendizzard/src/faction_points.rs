@@ -5,7 +5,7 @@ use crate::errors::Error;
 use crate::storage;
 use crate::types::{
     EpochPlayer, BASE_FP_PER_USDC, COMPONENT_PEAK, FIXED_POINT_ONE, MAX_AMOUNT_USD,
-    MAX_TIME_SECONDS, TARGET_AMOUNT_USD, TARGET_TIME_SECONDS, SCALAR_7,
+    MAX_TIME_SECONDS, SCALAR_7, TARGET_AMOUNT_USD, TARGET_TIME_SECONDS,
 };
 
 // ============================================================================
@@ -104,21 +104,15 @@ fn calculate_amount_multiplier(amount_usd: i128) -> Result<i128, Error> {
             .ok_or(Error::OverflowError)?;
 
         // Hermite basis: h(t) = 3t² - 2t³
-        let t_squared = t
-            .fixed_mul_floor(t, SCALAR_7)
-            .ok_or(Error::OverflowError)?;
+        let t_squared = t.fixed_mul_floor(t, SCALAR_7).ok_or(Error::OverflowError)?;
 
         let t_cubed = t_squared
             .fixed_mul_floor(t, SCALAR_7)
             .ok_or(Error::OverflowError)?;
 
-        let three_t_squared = t_squared
-            .checked_mul(3)
-            .ok_or(Error::OverflowError)?;
+        let three_t_squared = t_squared.checked_mul(3).ok_or(Error::OverflowError)?;
 
-        let two_t_cubed = t_cubed
-            .checked_mul(2)
-            .ok_or(Error::OverflowError)?;
+        let two_t_cubed = t_cubed.checked_mul(2).ok_or(Error::OverflowError)?;
 
         let h = three_t_squared
             .checked_sub(two_t_cubed)
@@ -161,21 +155,15 @@ fn calculate_amount_multiplier(amount_usd: i128) -> Result<i128, Error> {
             .ok_or(Error::OverflowError)?;
 
         // Hermite basis: h(t) = 3t² - 2t³
-        let t_squared = t
-            .fixed_mul_floor(t, SCALAR_7)
-            .ok_or(Error::OverflowError)?;
+        let t_squared = t.fixed_mul_floor(t, SCALAR_7).ok_or(Error::OverflowError)?;
 
         let t_cubed = t_squared
             .fixed_mul_floor(t, SCALAR_7)
             .ok_or(Error::OverflowError)?;
 
-        let three_t_squared = t_squared
-            .checked_mul(3)
-            .ok_or(Error::OverflowError)?;
+        let three_t_squared = t_squared.checked_mul(3).ok_or(Error::OverflowError)?;
 
-        let two_t_cubed = t_cubed
-            .checked_mul(2)
-            .ok_or(Error::OverflowError)?;
+        let two_t_cubed = t_cubed.checked_mul(2).ok_or(Error::OverflowError)?;
 
         let h = three_t_squared
             .checked_sub(two_t_cubed)
@@ -239,21 +227,15 @@ fn calculate_time_multiplier(env: &Env, time_multiplier_start: u64) -> Result<i1
             .ok_or(Error::OverflowError)?;
 
         // Hermite basis: h(t) = 3t² - 2t³
-        let t_squared = t
-            .fixed_mul_floor(t, SCALAR_7)
-            .ok_or(Error::OverflowError)?;
+        let t_squared = t.fixed_mul_floor(t, SCALAR_7).ok_or(Error::OverflowError)?;
 
         let t_cubed = t_squared
             .fixed_mul_floor(t, SCALAR_7)
             .ok_or(Error::OverflowError)?;
 
-        let three_t_squared = t_squared
-            .checked_mul(3)
-            .ok_or(Error::OverflowError)?;
+        let three_t_squared = t_squared.checked_mul(3).ok_or(Error::OverflowError)?;
 
-        let two_t_cubed = t_cubed
-            .checked_mul(2)
-            .ok_or(Error::OverflowError)?;
+        let two_t_cubed = t_cubed.checked_mul(2).ok_or(Error::OverflowError)?;
 
         let h = three_t_squared
             .checked_sub(two_t_cubed)
@@ -294,21 +276,15 @@ fn calculate_time_multiplier(env: &Env, time_multiplier_start: u64) -> Result<i1
             .ok_or(Error::OverflowError)?;
 
         // Hermite basis: h(t) = 3t² - 2t³
-        let t_squared = t
-            .fixed_mul_floor(t, SCALAR_7)
-            .ok_or(Error::OverflowError)?;
+        let t_squared = t.fixed_mul_floor(t, SCALAR_7).ok_or(Error::OverflowError)?;
 
         let t_cubed = t_squared
             .fixed_mul_floor(t, SCALAR_7)
             .ok_or(Error::OverflowError)?;
 
-        let three_t_squared = t_squared
-            .checked_mul(3)
-            .ok_or(Error::OverflowError)?;
+        let three_t_squared = t_squared.checked_mul(3).ok_or(Error::OverflowError)?;
 
-        let two_t_cubed = t_cubed
-            .checked_mul(2)
-            .ok_or(Error::OverflowError)?;
+        let two_t_cubed = t_cubed.checked_mul(2).ok_or(Error::OverflowError)?;
 
         let h = three_t_squared
             .checked_sub(two_t_cubed)
