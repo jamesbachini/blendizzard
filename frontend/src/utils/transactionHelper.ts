@@ -66,7 +66,7 @@ export async function signAndSendViaLaunchtube(
   // Build sign options matching AssembledTransaction.sign() pattern
   const signOpts: any = {
     networkPassphrase: tx.options.networkPassphrase,
-    address: tx.options.address,
+    address: tx.options.publicKey || tx.options.address,
   };
 
   const { signedTxXdr, error } = await tx.options.signTransaction(
