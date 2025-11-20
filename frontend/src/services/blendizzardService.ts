@@ -1,6 +1,7 @@
 import { Client as BlendizzardClient } from 'blendizzard';
 import { BLENDIZZARD_CONTRACT, NETWORK_PASSPHRASE, RPC_URL, DEFAULT_METHOD_OPTIONS } from '@/utils/constants';
 import { contract } from '@stellar/stellar-sdk';
+import { signAndSendViaLaunchtube } from '@/utils/transactionHelper';
 
 type ClientOptions = contract.ClientOptions;
 
@@ -97,7 +98,7 @@ export class BlendizzardService {
       player: playerAddress,
       faction: factionId,
     }, DEFAULT_METHOD_OPTIONS);
-    const { result } = await tx.signAndSend();
+    const { result } = await signAndSendViaLaunchtube(tx);
     return result;
   }
 
@@ -123,7 +124,7 @@ export class BlendizzardService {
       player1_wager: player1Wager,
       player2_wager: player2Wager,
     }, DEFAULT_METHOD_OPTIONS);
-    const { result } = await tx.signAndSend();
+    const { result } = await signAndSendViaLaunchtube(tx);
     return result;
   }
 
@@ -146,7 +147,7 @@ export class BlendizzardService {
       // Simulate to ensure proper footprint
       await tx.simulate();
 
-      const sentTx = await tx.signAndSend();
+      const sentTx = await signAndSendViaLaunchtube(tx);
 
       // Check transaction status before accessing result
       if (sentTx.getTransactionResponse?.status === 'FAILED') {
@@ -162,7 +163,11 @@ export class BlendizzardService {
       if (sentTx.result && typeof sentTx.result === 'object' && 'unwrap' in sentTx.result) {
         return (sentTx.result as any).unwrap();
       }
-      return BigInt(sentTx.result);
+      // Convert string/number to bigint
+      if (typeof sentTx.result === 'string' || typeof sentTx.result === 'number') {
+        return BigInt(sentTx.result);
+      }
+      throw new Error('Unexpected result type from claim epoch reward transaction');
     } catch (err) {
       console.error('Claim epoch reward error:', err);
 
@@ -245,7 +250,7 @@ export class BlendizzardService {
     await tx.simulate();
 
     try {
-      const sentTx = await tx.signAndSend();
+      const sentTx = await signAndSendViaLaunchtube(tx);
 
       // Check transaction status before accessing result
       if (sentTx.getTransactionResponse?.status === 'FAILED') {

@@ -1,6 +1,7 @@
 import { Client as NumberGuessClient, type Game } from 'number-guess';
 import { GAME_CONTRACT, NETWORK_PASSPHRASE, RPC_URL, DEFAULT_METHOD_OPTIONS } from '@/utils/constants';
 import { contract, TransactionBuilder, StrKey } from '@stellar/stellar-sdk';
+import { signAndSendViaLaunchtube } from '@/utils/transactionHelper';
 
 type ClientOptions = contract.ClientOptions;
 
@@ -65,7 +66,7 @@ export class NumberGuessService {
       player1_wager: player1Wager,
       player2_wager: player2Wager,
     }, DEFAULT_METHOD_OPTIONS);
-    const { result } = await tx.signAndSend();
+    const { result } = await signAndSendViaLaunchtube(tx);
     return result;
   }
 
@@ -176,7 +177,7 @@ export class NumberGuessService {
     await tx.simulate();
 
     // Sign the transaction envelope and submit
-    const { result } = await tx.signAndSend();
+    const { result } = await signAndSendViaLaunchtube(tx);
     return result;
   }
 
@@ -307,7 +308,7 @@ export class NumberGuessService {
     await tx.simulate();
 
     try {
-      const sentTx = await tx.signAndSend();
+      const sentTx = await signAndSendViaLaunchtube(tx);
 
       if (sentTx.getTransactionResponse?.status === 'FAILED') {
         const errorMessage = this.extractErrorFromDiagnostics(sentTx.getTransactionResponse);
@@ -339,7 +340,7 @@ export class NumberGuessService {
     await tx.simulate();
 
     try {
-      const sentTx = await tx.signAndSend();
+      const sentTx = await signAndSendViaLaunchtube(tx);
 
       // Check transaction status before accessing result
       if (sentTx.getTransactionResponse?.status === 'FAILED') {

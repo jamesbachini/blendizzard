@@ -20,6 +20,13 @@ export const BLND_TOKEN = import.meta.env.VITE_BLND_TOKEN;
 // Other
 export const SOROSWAP_ROUTER = import.meta.env.VITE_SOROSWAP_ROUTER;
 
+// Launchtube configuration
+export const LAUNCHTUBE_URL = import.meta.env.VITE_LAUNCHTUBE_URL || 'http://launchtube.xyz';
+export const LAUNCHTUBE_JWT = import.meta.env.VITE_LAUNCHTUBE_JWT;
+
+// Cloudflare Turnstile
+export const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA';
+
 // Faction definitions
 export const FACTIONS = {
   WHOLENOODLE: 0,
@@ -64,12 +71,12 @@ export const BLND_DECIMALS = 7;
 // Transaction settings
 export const DEFAULT_TX_TIMEOUT = 300; // 5 minutes for single-sig
 export const MULTI_SIG_TX_TIMEOUT = 600; // 10 minutes for multi-sig
-export const DEFAULT_FEE = '100000'; // Base fee in stroops
+// export const DEFAULT_FEE = '100000'; // Base fee in stroops
 
 // Default options for all contract method calls
 // Matches pattern from bunt/e2e-game.ts
 export const DEFAULT_METHOD_OPTIONS = {
-  fee: 100000, // Higher fee for mainnet (100,000 stroops = 0.01 XLM)
+  // fee: 100000, // Higher fee for mainnet (100,000 stroops = 0.01 XLM)
   timeoutInSeconds: 30,
 } as const;
 

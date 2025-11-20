@@ -1,6 +1,7 @@
 import { Client as FeeVaultClient } from 'fee-vault';
 import { VAULT_CONTRACT, NETWORK_PASSPHRASE, RPC_URL, DEFAULT_METHOD_OPTIONS } from '@/utils/constants';
 import { contract } from '@stellar/stellar-sdk';
+import { signAndSendViaLaunchtube } from '@/utils/transactionHelper';
 
 type ClientOptions = contract.ClientOptions;
 
@@ -83,7 +84,7 @@ export class FeeVaultService {
   ) {
     const client = this.createSigningClient(userAddress, signer);
     const tx = await client.deposit({ user: userAddress, amount }, DEFAULT_METHOD_OPTIONS);
-    const { result } = await tx.signAndSend();
+    const { result } = await signAndSendViaLaunchtube(tx);
     return result;
   }
 
@@ -98,7 +99,7 @@ export class FeeVaultService {
   ) {
     const client = this.createSigningClient(userAddress, signer);
     const tx = await client.withdraw({ user: userAddress, amount }, DEFAULT_METHOD_OPTIONS);
-    const { result } = await tx.signAndSend();
+    const { result } = await signAndSendViaLaunchtube(tx);
     return result;
   }
 }

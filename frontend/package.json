@@ -11,21 +11,15 @@
   },
   "dependencies": {
     "@creit-tech/stellar-wallets-kit": "jsr:2.0.0-beta.6",
-    "@headlessui/react": "^2.2.9",
-    "@stellar/freighter-api": "^5.0.0",
     "@stellar/stellar-sdk": "^14.3.3",
-    "@tanstack/react-query": "^5.90.10",
-    "bignumber.js": "^9.3.1",
     "blendizzard": "file:../bunt/bindings/blendizzard",
     "buffer": "^6.0.3",
     "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
     "fee-vault": "file:../bunt/bindings/fee-vault",
     "lucide-react": "^0.554.0",
     "number-guess": "file:../bunt/bindings/number-guess",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.9.6",
     "sac-sdk": "^0.4.2",
     "tailwind-merge": "^3.4.0",
     "zustand": "^5.0.8"
@@ -34,7 +28,6 @@
     "@eslint/js": "^9.39.1",
     "@rollup/plugin-inject": "^5.0.5",
     "@tailwindcss/postcss": "^4.1.17",
-    "@types/bignumber.js": "^5.0.4",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.6",
     "@types/react-dom": "^19.2.3",
@@ -47,11 +40,9 @@
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
     "prettier-plugin-tailwindcss": "^0.7.1",
-    "process": "^0.11.10",
     "tailwindcss": "^4.1.17",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.47.0",
-    "vite": "^7.2.4",
-    "vite-plugin-node-polyfills": "^0.24.0"
+    "vite": "^7.2.4"
   }
 }
