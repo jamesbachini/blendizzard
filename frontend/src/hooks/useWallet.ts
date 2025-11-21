@@ -1,8 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useWalletStore } from '@/store/walletSlice';
-import { walletService } from '@/services/walletService';
+import { StellarWalletsKit, WalletNetwork, allowAllModules } from '@creit.tech/stellar-wallets-kit';
+import type { ISupportedWallet } from '@creit.tech/stellar-wallets-kit';
 import { devWalletService, DevWalletService } from '@/services/devWalletService';
-import { getSigner } from '@/utils/signerHelper';
+import { NETWORK, NETWORK_PASSPHRASE } from '@/utils/constants';
+import type { ContractSigner } from '@/types/signer';
 
 export function useWallet() {
   const {
@@ -21,26 +23,76 @@ export function useWallet() {
     disconnect: storeDisconnect,
   } = useWalletStore();
 
+  // v1 uses instance-based API, store the kit instance
+  const kitRef = useRef<StellarWalletsKit | null>(null);
+
+  /**
+   * Get or create StellarWalletsKit instance
+   */
+  const getKit = useCallback(() => {
+    if (!kitRef.current) {
+      const walletNetwork = NETWORK.toLowerCase() === 'testnet'
+        ? WalletNetwork.TESTNET
+        : WalletNetwork.PUBLIC;
+
+      kitRef.current = new StellarWalletsKit({
+        network: walletNetwork,
+        modules: allowAllModules(),
+      });
+    }
+    return kitRef.current;
+  }, []);
+
   /**
    * Connect to a wallet using the modal
    */
   const connect = useCallback(async () => {
-    try {
-      setConnecting(true);
-      setError(null);
+    return new Promise<void>((resolve, reject) => {
+      try {
+        setConnecting(true);
+        setError(null);
 
-      const details = await walletService.openModal();
+        const kit = getKit();
 
-      // Update store with wallet details
-      setWallet(details.address, details.walletId, 'wallet');
-      setNetwork(details.network, details.networkPassphrase);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to connect wallet';
-      setError(errorMessage);
-      console.error('Wallet connection error:', err);
-      throw err;
-    }
-  }, [setWallet, setConnecting, setNetwork, setError]);
+        // v1 API: openModal with callbacks
+        kit.openModal({
+          onWalletSelected: async (wallet: ISupportedWallet) => {
+            try {
+              kit.setWallet(wallet.id);
+              const { address } = await kit.getAddress();
+
+              // Update store with wallet details
+              setWallet(address, wallet.id, 'wallet');
+              setNetwork(NETWORK, NETWORK_PASSPHRASE);
+              setConnecting(false);
+              resolve();
+            } catch (err) {
+              const errorMessage = err instanceof Error ? err.message : 'Failed to get address';
+              setError(errorMessage);
+              setConnecting(false);
+              reject(err);
+            }
+          },
+          onClosed: (err) => {
+            if (err) {
+              const errorMessage = err instanceof Error ? err.message : 'Modal closed';
+              setError(errorMessage);
+              reject(err);
+            } else {
+              // User closed modal without selecting
+              reject(new Error('Connection cancelled'));
+            }
+            setConnecting(false);
+          },
+        });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to open modal';
+        setError(errorMessage);
+        setConnecting(false);
+        reject(err);
+      }
+    });
+  }, [setWallet, setConnecting, setNetwork, setError, getKit]);
 
   /**
    * Connect as a dev player (for testing)
@@ -54,12 +106,9 @@ export function useWallet() {
         devWalletService.initPlayer(playerNumber);
         const address = devWalletService.getPublicKey();
 
-        // Get network from wallet service
-        const { network: net, networkPassphrase: pass } = walletService.getNetwork();
-
-        // Update store
+        // Update store with dev wallet
         setWallet(address, `dev-player${playerNumber}`, 'dev');
-        setNetwork(net, pass);
+        setNetwork(NETWORK, NETWORK_PASSPHRASE);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to connect dev wallet';
         setError(errorMessage);
@@ -74,8 +123,9 @@ export function useWallet() {
    * Disconnect wallet
    */
   const disconnect = useCallback(async () => {
-    if (walletType === 'wallet') {
-      await walletService.disconnect();
+    if (walletType === 'wallet' && kitRef.current) {
+      // v1 doesn't have a disconnect method - just clear the reference
+      kitRef.current = null;
     } else if (walletType === 'dev') {
       devWalletService.disconnect();
     }
@@ -84,39 +134,51 @@ export function useWallet() {
 
   /**
    * Get a signer for contract interactions
+   * Returns functions that the Stellar SDK TS bindings can use for signing
    */
-  const getContractSigner = useCallback(() => {
+  const getContractSigner = useCallback((): ContractSigner => {
     if (!isConnected || !publicKey || !walletType) {
       throw new Error('Wallet not connected');
     }
 
-    return getSigner(walletType, publicKey);
-  }, [isConnected, publicKey, walletType]);
-
-  /**
-   * Sign a transaction (direct method for backward compatibility)
-   * Returns { signedTxXdr: string; signerAddress?: string; error?: WalletError }
-   */
-  const signTransaction = useCallback(
-    async (xdr: string) => {
-      if (!isConnected || !publicKey || !walletType) {
-        throw new Error('Wallet not connected');
-      }
-
-      try {
-        if (walletType === 'dev') {
-          return await devWalletService.signTransaction(xdr);
-        } else {
-          return await walletService.signTransaction(xdr);
-        }
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to sign transaction';
-        setError(errorMessage);
-        throw err;
-      }
-    },
-    [isConnected, publicKey, walletType, setError]
-  );
+    if (walletType === 'dev') {
+      // Dev wallet uses the dev wallet service's signer
+      return devWalletService.getSigner();
+    } else {
+      // Wallet signer calls v1 StellarWalletsKit instance methods
+      const kit = getKit();
+      return {
+        signTransaction: async (xdr: string, opts?: {
+          networkPassphrase?: string;
+          address?: string;
+          submit?: boolean;
+          submitUrl?: string;
+        }) => {
+          const signingAddress = opts?.address || publicKey;
+          console.log('signingAddress', signingAddress);
+          return await kit.signTransaction(xdr, {
+            networkPassphrase: NETWORK_PASSPHRASE,
+            address: signingAddress,
+          });
+        },
+        signAuthEntry: async (authEntry: string, opts?: {
+          networkPassphrase?: string;
+          address?: string;
+        }) => {
+          const signingAddress = opts?.address || publicKey;
+          console.log('signingAddress', signingAddress);
+          const result = await kit.signAuthEntry(authEntry, {
+            networkPassphrase: NETWORK_PASSPHRASE,
+            address: signingAddress,
+          });
+          return {
+            signedAuthEntry: result.signedAuthEntry,
+            signerAddress: result.signerAddress,
+          };
+        },
+      };
+    }
+  }, [isConnected, publicKey, walletType, getKit]);
 
   /**
    * Check if dev mode is available
@@ -136,7 +198,7 @@ export function useWallet() {
    * Get the install link for wallet extension
    */
   const getInstallLink = useCallback(() => {
-    return walletService.getInstallLink();
+    return 'https://www.freighter.app/';
   }, []);
 
   return {
@@ -154,7 +216,6 @@ export function useWallet() {
     connect,
     connectDev,
     disconnect,
-    signTransaction,
     getContractSigner,
     isDevModeAvailable,
     isDevPlayerAvailable,

@@ -48,18 +48,6 @@ export class DevWalletService {
   }
 
   /**
-   * Sign a transaction XDR (for backwards compatibility)
-   */
-  async signTransaction(xdr: string) {
-    if (!this.keypair) {
-      throw new Error('Dev wallet not initialized. Call initPlayer() first.');
-    }
-
-    const signer = contract.basicNodeSigner(this.keypair, NETWORK_PASSPHRASE);
-    return await signer.signTransaction(xdr);
-  }
-
-  /**
    * Check if dev wallets are available (for development mode detection)
    */
   static isDevModeAvailable(): boolean {

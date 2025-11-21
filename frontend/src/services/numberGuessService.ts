@@ -106,7 +106,7 @@ export class NumberGuessService {
 
     // Step 2: Player 1 imports and signs what they need to sign
     const player1Client = this.createSigningClient(player1, player1Signer);
-    const player1Tx = (player1Client as any).txFromXDR(tx.toXDR());
+    const player1Tx = player1Client.txFromXDR(tx.toXDR());
 
     // Discover what Player 1 needs to sign
     const needsSigning = await player1Tx.needsNonInvokerSigningBy();
@@ -139,7 +139,7 @@ export class NumberGuessService {
     const client = this.createSigningClient(player2Address, player2Signer);
 
     // Import the transaction from XDR
-    const tx = (client as any).txFromXDR(xdr);
+    const tx = client.txFromXDR(xdr);
 
     // Check if Player 2 needs to sign an auth entry
     const needsSigning = await tx.needsNonInvokerSigningBy();
@@ -170,7 +170,7 @@ export class NumberGuessService {
     const client = this.createSigningClient(signerAddress, signer);
 
     // Import the transaction with all auth entries signed
-    const tx = (client as any).txFromXDR(xdr);
+    const tx = client.txFromXDR(xdr);
 
     // CRITICAL: Must simulate again after auth entries are signed
     // This updates the transaction with the signed auth entries
@@ -194,7 +194,7 @@ export class NumberGuessService {
       signAuthEntry: async (xdr: string) => ({ signedAuthEntry: xdr }),
     });
 
-    const tx = (client as any).txFromXDR(xdr);
+    const tx = client.txFromXDR(xdr);
 
     // Returns array of addresses that need to sign their auth entries
     const needsSigning = await tx.needsNonInvokerSigningBy();
