@@ -1,6 +1,6 @@
 import { Client as BlendizzardClient } from 'blendizzard';
 import { BLENDIZZARD_CONTRACT, NETWORK_PASSPHRASE, RPC_URL, DEFAULT_METHOD_OPTIONS, DEFAULT_AUTH_TTL_MINUTES } from '@/utils/constants';
-import { contract } from '@stellar/stellar-sdk';
+import { contract, scValToNative } from '@stellar/stellar-sdk';
 import { signAndSendViaLaunchtube } from '@/utils/transactionHelper';
 import { calculateValidUntilLedger } from '@/utils/ledgerUtils';
 
@@ -281,15 +281,28 @@ export class BlendizzardService {
         throw new Error(`Failed to cycle epoch: ${errorMessage}`);
       }
 
-      // Return the new epoch number - handle Result type unwrapping
-      if (typeof sentTx.result === 'number') {
-        return sentTx.result;
+      // Parse the result from the transaction response
+      // The contract returns Result<u32, Error>, so we need to decode it
+      if (sentTx.result) {
+        // Use scValToNative to decode the result
+        const decoded = scValToNative(sentTx.result as any);
+        console.log('Decoded cycle_epoch result:', decoded);
+
+        // Result<u32, Error> unwrapping
+        if (typeof decoded === 'number') {
+          return decoded;
+        }
+        if (typeof decoded === 'object' && decoded !== null && 'unwrap' in decoded) {
+          return Number((decoded as any).unwrap());
+        }
+        if (typeof decoded === 'object' && decoded !== null && 'Ok' in decoded) {
+          return Number((decoded as any).Ok);
+        }
+
+        return Number(decoded);
       }
-      // Handle Result<number, ErrorMessage> type
-      if (sentTx.result && typeof sentTx.result === 'object' && 'unwrap' in sentTx.result) {
-        return Number((sentTx.result as any).unwrap());
-      }
-      return Number(sentTx.result);
+
+      throw new Error('No result returned from cycle_epoch');
     } catch (err) {
       if (err instanceof Error && err.message.includes('Transaction failed!')) {
         throw new Error('Failed to cycle epoch - transaction rejected. Check that epoch has ended and no active games exist.');

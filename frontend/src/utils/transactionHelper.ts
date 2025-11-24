@@ -154,10 +154,18 @@ export async function signAndSendViaLaunchtube(
     }
 
     // 10. Get the result from the transaction response
-    // This matches what signAndSend() would return
-    const result = tx.simulation && rpc.Api.isSimulationSuccess(tx.simulation)
-      ? tx.simulation.result?.retval
-      : undefined;
+    // For successful transactions, we need to extract the return value from the response
+    let result: unknown;
+
+    if (getTransactionResponse.status === 'SUCCESS' && getTransactionResponse.returnValue) {
+      // Parse the actual return value from the executed transaction
+      result = getTransactionResponse.returnValue;
+    } else if (tx.simulation && rpc.Api.isSimulationSuccess(tx.simulation)) {
+      // Fallback to simulation result if transaction doesn't have a return value
+      result = tx.simulation.result?.retval;
+    } else {
+      result = undefined;
+    }
 
     return {
       result,
