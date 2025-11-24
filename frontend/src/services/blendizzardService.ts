@@ -173,19 +173,34 @@ export class BlendizzardService {
         throw new Error(`Failed to claim epoch reward: ${errorMessage}`);
       }
 
-      // Extract bigint from Result type
-      if (typeof sentTx.result === 'bigint') {
-        return sentTx.result;
+      // Parse the result from the transaction response
+      // The contract returns Result<i128, Error> (USDC claimed amount)
+      if (sentTx.result) {
+        // Use scValToNative to decode the result
+        const decoded = scValToNative(sentTx.result as any);
+        console.log('Decoded claim_epoch_reward result:', decoded);
+
+        // Result<i128, Error> unwrapping
+        if (typeof decoded === 'bigint') {
+          return decoded;
+        }
+        if (typeof decoded === 'number') {
+          return BigInt(decoded);
+        }
+        if (typeof decoded === 'string') {
+          return BigInt(decoded);
+        }
+        if (typeof decoded === 'object' && decoded !== null && 'unwrap' in decoded) {
+          return BigInt((decoded as any).unwrap());
+        }
+        if (typeof decoded === 'object' && decoded !== null && 'Ok' in decoded) {
+          return BigInt((decoded as any).Ok);
+        }
+
+        return BigInt(decoded);
       }
-      // Handle Result<bigint, ErrorMessage> type
-      if (sentTx.result && typeof sentTx.result === 'object' && 'unwrap' in sentTx.result) {
-        return (sentTx.result as any).unwrap();
-      }
-      // Convert string/number to bigint
-      if (typeof sentTx.result === 'string' || typeof sentTx.result === 'number') {
-        return BigInt(sentTx.result);
-      }
-      throw new Error('Unexpected result type from claim epoch reward transaction');
+
+      throw new Error('No result returned from claim_epoch_reward');
     } catch (err) {
       console.error('Claim epoch reward error:', err);
 
