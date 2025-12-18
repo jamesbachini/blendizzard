@@ -660,27 +660,29 @@ export interface Client {
     }, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>;
     /**
      * Construct and simulate a claim_dev_reward transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Claim developer reward for a game in a specific epoch
+     * Claim developer reward for a specific epoch
      *
-     * Game developers can claim their share of the epoch's dev reward pool
-     * proportional to the total FP contributed through their game.
+     * Developers claim their aggregated share of the epoch's dev reward pool
+     * proportional to total FP contributed through all their registered games.
      *
      * **Note:** To check claimable amounts or claim status before calling,
      * use transaction simulation. This is the idiomatic Soroban pattern.
+     *
+     * # Arguments
+     * * `developer` - Developer address claiming rewards
+     * * `epoch` - Epoch number to claim from
      *
      * # Returns
      * Amount of USDC claimed and transferred to developer
      *
      * # Errors
-     * * `GameNotRegistered` - If game is not registered
-     * * `NotGameDeveloper` - If caller is not the registered developer
      * * `EpochNotFinalized` - If epoch doesn't exist or isn't finalized
-     * * `DevRewardAlreadyClaimed` - If already claimed for this game/epoch
-     * * `GameNoContributions` - If game has no contributions this epoch
+     * * `DevRewardAlreadyClaimed` - If already claimed for this epoch
+     * * `GameNoContributions` - If developer has no contributions this epoch
      * * `ContractPaused` - If contract is in emergency pause mode
      */
-    claim_dev_reward: ({ game_id, epoch }: {
-        game_id: string;
+    claim_dev_reward: ({ developer, epoch }: {
+        developer: string;
         epoch: u32;
     }, options?: MethodOptions) => Promise<AssembledTransaction<Result<i128>>>;
     /**

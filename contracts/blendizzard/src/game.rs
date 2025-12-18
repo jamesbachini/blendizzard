@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env, IntoVal as _, vec};
+use soroban_sdk::{vec, Address, Env, IntoVal as _};
 
 use crate::errors::Error;
 use crate::events::{emit_game_ended, emit_game_started};
@@ -81,7 +81,6 @@ pub(crate) fn is_game(env: &Env, game_id: &Address) -> bool {
     storage::is_game_registered(env, game_id)
 }
 
-
 // ============================================================================
 // Game Lifecycle
 // ============================================================================
@@ -139,8 +138,18 @@ pub(crate) fn start_game(
     }
 
     // Authenticate players (for their consent to lock FP)
-    player1.require_auth_for_args(vec![&env, game_id.to_val(), session_id.into_val(env), player1_wager.into_val(env)]);
-    player2.require_auth_for_args(vec![&env, game_id.to_val(), session_id.into_val(env), player2_wager.into_val(env)]);
+    player1.require_auth_for_args(vec![
+        &env,
+        game_id.to_val(),
+        session_id.into_val(env),
+        player1_wager.into_val(env),
+    ]);
+    player2.require_auth_for_args(vec![
+        &env,
+        game_id.to_val(),
+        session_id.into_val(env),
+        player2_wager.into_val(env),
+    ]);
 
     // CRITICAL: Validate both players have explicitly selected a faction
     // This check must happen BEFORE any other initialization logic
@@ -356,13 +365,13 @@ fn initialize_player_epoch(env: &Env, player: &Address, current_epoch: u32) -> R
 
 /// Update epoch info when a game ends (single read/write for efficiency)
 ///
-/// Combines faction standings update and game contribution tracking to avoid
+/// Combines faction standings update and developer contribution tracking to avoid
 /// double read/write of EpochInfo storage.
 ///
 /// Updates:
 /// 1. Faction standings (winner's wager)
 /// 2. Total game FP (both wagers for dev rewards)
-/// 3. Per-game FP contribution (EpochGame)
+/// 3. Per-developer FP contribution (aggregated across all games for the developer)
 fn update_epoch_on_game_end(
     env: &Env,
     winner: &Address,
@@ -398,17 +407,21 @@ fn update_epoch_on_game_end(
     // Save epoch info (single write)
     storage::set_epoch(env, current_epoch, &epoch_info);
 
-    // 3. Update per-game contribution (separate storage key)
-    let mut epoch_game = storage::get_epoch_game(env, current_epoch, game_id).unwrap_or(EpochGame {
-        total_fp_contributed: 0,
-    });
+    // 3. Update per-developer contribution (aggregated across all games for this developer)
+    let game_info = storage::get_game_info(env, game_id).ok_or(Error::GameNotRegistered)?;
+    let developer = &game_info.developer;
+
+    let mut epoch_game =
+        storage::get_epoch_game(env, current_epoch, developer).unwrap_or(EpochGame {
+            total_fp_contributed: 0,
+        });
 
     epoch_game.total_fp_contributed = epoch_game
         .total_fp_contributed
         .checked_add(total_game_wager)
         .ok_or(Error::OverflowError)?;
 
-    storage::set_epoch_game(env, current_epoch, game_id, &epoch_game);
+    storage::set_epoch_game(env, current_epoch, developer, &epoch_game);
 
     Ok(())
 }

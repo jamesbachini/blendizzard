@@ -5,8 +5,8 @@
 
 use super::fee_vault_utils::{create_mock_vault, MockVaultClient};
 use super::testutils::{
-    assert_contract_error, create_blendizzard_contract_with_free_play, setup_test_env,
-    DEFAULT_FREE_FP_PER_EPOCH, DEFAULT_MIN_DEPOSIT_TO_CLAIM, Error,
+    assert_contract_error, create_blendizzard_contract_with_free_play, setup_test_env, Error,
+    DEFAULT_FREE_FP_PER_EPOCH, DEFAULT_MIN_DEPOSIT_TO_CLAIM,
 };
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{vec, Address};
@@ -41,7 +41,7 @@ fn test_free_player_gets_free_fp_only() {
         &usdc_token,
         345_600,
         vec![&env, 1],
-        DEFAULT_FREE_FP_PER_EPOCH, // 100 FP
+        DEFAULT_FREE_FP_PER_EPOCH,    // 100 FP
         DEFAULT_MIN_DEPOSIT_TO_CLAIM, // 1 USDC
     );
 
@@ -83,7 +83,7 @@ fn test_deposited_player_gets_free_fp_plus_deposit_fp() {
         &usdc_token,
         345_600,
         vec![&env, 1],
-        DEFAULT_FREE_FP_PER_EPOCH, // 100 FP
+        DEFAULT_FREE_FP_PER_EPOCH,    // 100 FP
         DEFAULT_MIN_DEPOSIT_TO_CLAIM, // 1 USDC
     );
 
@@ -103,12 +103,18 @@ fn test_deposited_player_gets_free_fp_plus_deposit_fp() {
     let expected_min_fp = DEFAULT_FREE_FP_PER_EPOCH + (deposit_amount * 100);
 
     // FP should be at least free_fp + base deposit FP (with 1.0x multipliers)
-    assert!(epoch_player.available_fp >= expected_min_fp,
-        "Expected at least {} FP, got {}", expected_min_fp, epoch_player.available_fp);
+    assert!(
+        epoch_player.available_fp >= expected_min_fp,
+        "Expected at least {} FP, got {}",
+        expected_min_fp,
+        epoch_player.available_fp
+    );
 
     // FP should be more than just free FP (proving additive)
-    assert!(epoch_player.available_fp > DEFAULT_FREE_FP_PER_EPOCH,
-        "Deposited player should have more than free FP");
+    assert!(
+        epoch_player.available_fp > DEFAULT_FREE_FP_PER_EPOCH,
+        "Deposited player should have more than free FP"
+    );
 }
 
 #[test]
@@ -185,15 +191,15 @@ fn test_update_config_changes_free_fp() {
     // Update free FP via update_config
     let new_free_fp = 500_0000000i128;
     blendizzard.update_config(
-        &None, // fee_vault
-        &None, // soroswap_router
-        &None, // blnd_token
-        &None, // usdc_token
-        &None, // epoch_duration
-        &None, // reserve_token_ids
+        &None,              // fee_vault
+        &None,              // soroswap_router
+        &None,              // blnd_token
+        &None,              // usdc_token
+        &None,              // epoch_duration
+        &None,              // reserve_token_ids
         &Some(new_free_fp), // new_free_fp_per_epoch
-        &None, // min_deposit_to_claim
-        &None, // dev_reward_share
+        &None,              // min_deposit_to_claim
+        &None,              // dev_reward_share
     );
 
     // Verify config updated
@@ -242,7 +248,8 @@ fn test_free_player_cannot_claim_rewards() {
 
     // Advance time and cycle epoch
     let epoch_duration = 345_600u64;
-    env.ledger().set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
     blendizzard.cycle_epoch();
 
     // Free player tries to claim - should fail with DepositRequiredToClaim
@@ -287,7 +294,8 @@ fn test_player_can_claim_after_depositing() {
 
     // Advance time and cycle epoch
     let epoch_duration = 345_600u64;
-    env.ledger().set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
     blendizzard.cycle_epoch();
 
     // Try to claim - may fail for reasons like no reward pool,
@@ -328,7 +336,8 @@ fn test_deposit_below_threshold_cannot_claim() {
 
     // Advance time and cycle epoch (need a finalized epoch to claim)
     let epoch_duration = 345_600u64;
-    env.ledger().set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
     blendizzard.cycle_epoch();
 
     // Try to claim - should fail with DepositRequiredToClaim
@@ -359,7 +368,8 @@ fn test_deposit_exactly_at_threshold_can_pass_gate() {
 
     // Advance time and cycle epoch
     let epoch_duration = 345_600u64;
-    env.ledger().set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
     blendizzard.cycle_epoch();
 
     // Try to claim - should NOT fail with DepositRequiredToClaim
@@ -393,7 +403,17 @@ fn test_min_deposit_threshold_is_configurable() {
 
     // Update config to custom minimum deposit (5 USDC instead of default 1)
     let custom_min_deposit = 5_0000000i128;
-    blendizzard.update_config(&None, &None, &None, &None, &None, &None, &None, &Some(custom_min_deposit), &None);
+    blendizzard.update_config(
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+        &Some(custom_min_deposit),
+        &None,
+    );
 
     // Verify config updated
     let config = blendizzard.get_config();
@@ -406,7 +426,8 @@ fn test_min_deposit_threshold_is_configurable() {
 
     // Advance time and cycle epoch
     let epoch_duration = 345_600u64;
-    env.ledger().set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + epoch_duration + 1);
     blendizzard.cycle_epoch();
 
     // Player with 3 USDC cannot claim (below 5 USDC threshold)
@@ -584,6 +605,8 @@ fn test_free_fp_contributes_to_faction_standings() {
 
     // Faction 0 should have standings from free player's win
     let faction_0_standings = epoch_info.faction_standings.get(0).unwrap_or(0);
-    assert_eq!(faction_0_standings, wager,
-        "Free player's wager should contribute to faction standings");
+    assert_eq!(
+        faction_0_standings, wager,
+        "Free player's wager should contribute to faction standings"
+    );
 }

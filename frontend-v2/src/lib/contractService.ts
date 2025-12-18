@@ -266,10 +266,10 @@ export async function claimEpochReward(
 }
 
 /**
- * Claim developer reward for a game
+ * Claim developer reward for a specific epoch
  */
 export async function claimDevReward(
-  gameId: string,
+  developer: string,
   epoch: number
 ): Promise<{ success: boolean; amount?: bigint; error?: string }> {
   try {
@@ -280,7 +280,7 @@ export async function claimDevReward(
     }
 
     const client = createSigningBlendizzardClient()
-    const tx = await client.claim_dev_reward({ game_id: gameId, epoch }, DEFAULT_OPTIONS)
+    const tx = await client.claim_dev_reward({ developer, epoch }, DEFAULT_OPTIONS)
 
     const result = await kit.signAndSubmit(tx)
 
@@ -733,20 +733,21 @@ export async function fetchPlayerRewards(
  */
 export interface DevClaimableReward {
   epoch: number
-  gameAddress: string
+  developerAddress: string
   amount: bigint
   fpContributed: bigint
 }
 
 /**
  * Fetch claimable developer rewards for the last 100 epochs
+ * Now queries by developer address (EpochGame is keyed by developer, not game)
  */
 export async function fetchDevRewards(
-  gameAddresses: string[],
+  developerAddress: string,
   currentEpoch: number,
   epochsToFetch = 100
 ): Promise<DevClaimableReward[]> {
-  if (gameAddresses.length === 0) return []
+  if (!developerAddress) return []
 
   const contractId = CONFIG.blendizzardContract
   const startEpoch = Math.max(0, currentEpoch - epochsToFetch)
@@ -754,47 +755,34 @@ export async function fetchDevRewards(
 
   if (numEpochs <= 0) return []
 
-  // First, fetch all epoch info
-  const epochInfoKeys: xdr.LedgerKey[] = []
-  for (let epoch = startEpoch; epoch < currentEpoch; epoch++) {
-    epochInfoKeys.push(storageKeyToLedgerKey(contractId, buildEpochKey(epoch), 'temporary'))
-  }
-
-  const epochInfoResults = await batchGetLedgerEntries(epochInfoKeys)
-  const epochInfoMap = new Map<number, EpochInfo>()
-
-  for (let i = 0; i < numEpochs; i++) {
-    const epoch = startEpoch + i
-    const info = parseEpochInfo(epochInfoResults[i])
-    if (info) epochInfoMap.set(epoch, info)
-  }
-
-  // Now fetch EpochGame data for each game/epoch combo
-  const gameKeys: xdr.LedgerKey[] = []
-  const keyMeta: { epoch: number; gameAddress: string }[] = []
+  // Build keys for EpochGame (by developer) and Epoch info for each epoch
+  const keys: xdr.LedgerKey[] = []
 
   for (let epoch = startEpoch; epoch < currentEpoch; epoch++) {
-    for (const gameAddress of gameAddresses) {
-      gameKeys.push(
-        storageKeyToLedgerKey(contractId, buildEpochGameKey(epoch, gameAddress), 'temporary')
-      )
-      keyMeta.push({ epoch, gameAddress })
-    }
+    // EpochGame key (now keyed by developer address)
+    keys.push(
+      storageKeyToLedgerKey(contractId, buildEpochGameKey(epoch, developerAddress), 'temporary')
+    )
+    // Epoch info key
+    keys.push(storageKeyToLedgerKey(contractId, buildEpochKey(epoch), 'temporary'))
   }
 
-  const gameResults = await batchGetLedgerEntries(gameKeys)
+  // Batch fetch
+  const results = await batchGetLedgerEntries(keys)
 
   // Process results
   const rewards: DevClaimableReward[] = []
 
-  for (let i = 0; i < gameResults.length; i++) {
-    const data = gameResults[i]
-    const meta = keyMeta[i]
+  for (let i = 0; i < numEpochs; i++) {
+    const epoch = startEpoch + i
+    const epochGameData = results[i * 2]
+    const epochInfoData = results[i * 2 + 1]
 
-    if (!data || !meta) continue
+    if (!epochGameData || !epochInfoData) continue
 
     try {
-      const contractData = data.contractData()
+      // Parse EpochGame
+      const contractData = epochGameData.contractData()
       const val = contractData.val()
       const native = scValToNative(val)
 
@@ -802,34 +790,34 @@ export async function fetchDevRewards(
         total_fp_contributed: BigInt(native.total_fp_contributed || 0),
       }
 
-      const epochInfo = epochInfoMap.get(meta.epoch)
-
+      // Parse EpochInfo
+      const epochInfo = parseEpochInfo(epochInfoData)
       if (!epochInfo) continue
 
-      // Check if epoch is finalized and game has contributions
-      const gameFp = BigInt(epochGame.total_fp_contributed)
+      // Check if epoch is finalized and developer has contributions
+      const devFp = BigInt(epochGame.total_fp_contributed)
       const totalGameFp = BigInt(epochInfo.total_game_fp)
       const devRewardPool = BigInt(epochInfo.dev_reward_pool)
 
       if (
         epochInfo.is_finalized &&
-        gameFp > 0n &&
+        devFp > 0n &&
         totalGameFp > 0n
       ) {
-        // Calculate estimated dev reward: (game_fp / total_game_fp) * dev_reward_pool
-        const estimatedReward = (gameFp * devRewardPool) / totalGameFp
+        // Calculate estimated dev reward: (dev_fp / total_game_fp) * dev_reward_pool
+        const estimatedReward = (devFp * devRewardPool) / totalGameFp
 
         if (estimatedReward > 0n) {
           rewards.push({
-            epoch: meta.epoch,
-            gameAddress: meta.gameAddress,
+            epoch,
+            developerAddress,
             amount: estimatedReward,
-            fpContributed: gameFp,
+            fpContributed: devFp,
           })
         }
       }
     } catch (error) {
-      console.error(`Error parsing EpochGame for epoch ${meta.epoch}:`, error)
+      console.error(`Error parsing EpochGame for epoch ${epoch}:`, error)
     }
   }
 

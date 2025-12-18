@@ -13,6 +13,14 @@ const fpCache = new Map<string, { fp: bigint; fetchedAt: number }>()
 const CACHE_TTL_MS = 12_000 // 12 seconds
 const POLL_INTERVAL_MS = 12_000
 
+/**
+ * Pre-populate the FP cache (used when data is fetched elsewhere, e.g., getGamePageData).
+ * This prevents duplicate RPC calls when useAvailableFp mounts.
+ */
+export function preFillFpCache(address: string, fp: bigint): void {
+  fpCache.set(address, { fp, fetchedAt: Date.now() })
+}
+
 export function useAvailableFp() {
   const { address } = useWalletStore()
   const { availableFp, setAvailableFp } = useGameStore()

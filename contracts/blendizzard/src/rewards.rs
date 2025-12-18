@@ -141,42 +141,37 @@ pub(crate) fn claim_epoch_reward(env: &Env, player: &Address, epoch: u32) -> Res
     Ok(reward_amount)
 }
 
-/// Claim developer reward for a game in a specific epoch
+/// Claim developer reward for a specific epoch
 ///
-/// Game developers can claim their share of the epoch's dev reward pool
-/// proportional to the total FP contributed through their game.
+/// Developers claim their aggregated share of the epoch's dev reward pool
+/// proportional to total FP contributed through all their registered games.
 ///
 /// **No minimum deposit required** - the admin-only game registration
 /// serves as the anti-sybil mechanism for developers.
 ///
 /// Formula:
 /// ```
-/// game_reward = (game_fp / total_game_fp) * dev_reward_pool
+/// dev_reward = (dev_fp / total_game_fp) * dev_reward_pool
 /// ```
 ///
 /// # Arguments
 /// * `env` - Contract environment
-/// * `game_id` - Game contract address
+/// * `developer` - Developer address claiming rewards
 /// * `epoch` - Epoch number to claim from
 ///
 /// # Returns
 /// Amount of USDC claimed and transferred to developer
 ///
 /// # Errors
-/// * `GameNotRegistered` - If game is not registered
-/// * `NotGameDeveloper` - If caller is not the registered developer
 /// * `EpochNotFinalized` - If epoch doesn't exist or isn't finalized
-/// * `DevRewardAlreadyClaimed` - If already claimed for this game/epoch
-/// * `GameNoContributions` - If game has no contributions this epoch
-pub(crate) fn claim_dev_reward(env: &Env, game_id: &Address, epoch: u32) -> Result<i128, Error> {
-    // Get game info (verifies game is registered)
-    let game_info = storage::get_game_info(env, game_id).ok_or(Error::GameNotRegistered)?;
-
-    // Authenticate developer
-    game_info.developer.require_auth();
+/// * `DevRewardAlreadyClaimed` - If already claimed for this epoch
+/// * `GameNoContributions` - If developer has no contributions this epoch
+pub(crate) fn claim_dev_reward(env: &Env, developer: &Address, epoch: u32) -> Result<i128, Error> {
+    // Authenticate developer directly
+    developer.require_auth();
 
     // Check if already claimed
-    if storage::has_dev_claimed(env, game_id, epoch) {
+    if storage::has_dev_claimed(env, developer, epoch) {
         return Err(Error::DevRewardAlreadyClaimed);
     }
 
@@ -188,9 +183,9 @@ pub(crate) fn claim_dev_reward(env: &Env, game_id: &Address, epoch: u32) -> Resu
         return Err(Error::EpochNotFinalized);
     }
 
-    // Get game's epoch contribution
+    // Get developer's epoch contribution (aggregated across all their games)
     let epoch_game =
-        storage::get_epoch_game(env, epoch, game_id).ok_or(Error::GameNoContributions)?;
+        storage::get_epoch_game(env, epoch, developer).ok_or(Error::GameNoContributions)?;
 
     if epoch_game.total_fp_contributed == 0 {
         return Err(Error::GameNoContributions);
@@ -202,7 +197,7 @@ pub(crate) fn claim_dev_reward(env: &Env, game_id: &Address, epoch: u32) -> Resu
     }
 
     // Calculate reward share
-    // Formula: (game_fp / total_game_fp) * dev_reward_pool
+    // Formula: (dev_fp / total_game_fp) * dev_reward_pool
     let reward_amount = calculate_reward_share(
         epoch_game.total_fp_contributed,
         epoch_info.total_game_fp,
@@ -214,22 +209,17 @@ pub(crate) fn claim_dev_reward(env: &Env, game_id: &Address, epoch: u32) -> Resu
     }
 
     // Mark as claimed
-    storage::set_dev_claimed(env, game_id, epoch);
+    storage::set_dev_claimed(env, developer, epoch);
 
     // Transfer USDC directly to developer (no vault deposit)
     let config = storage::get_config(env);
     let usdc_client = token::Client::new(env, &config.usdc_token);
-    usdc_client.transfer(
-        &env.current_contract_address(),
-        &game_info.developer,
-        &reward_amount,
-    );
+    usdc_client.transfer(&env.current_contract_address(), developer, &reward_amount);
 
     // Emit event
     emit_dev_reward_claimed(
         env,
-        game_id,
-        &game_info.developer,
+        developer,
         epoch,
         epoch_game.total_fp_contributed,
         reward_amount,

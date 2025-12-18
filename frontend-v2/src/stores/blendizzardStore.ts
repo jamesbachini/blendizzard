@@ -37,7 +37,7 @@ export interface ClaimableReward {
 
 export interface DevClaimableReward {
   epoch: number
-  gameAddress: string
+  developerAddress: string
   amount: bigint // Estimated claimable amount
   fpContributed: bigint
 }
@@ -85,8 +85,8 @@ interface BlendizzardState {
   fetchAllPlayerData: (address: string) => Promise<void>
   /** Refresh balances only (for manual refresh buttons) */
   refreshBalances: (address: string) => Promise<void>
-  fetchPlayerRewards: (address: string) => Promise<void>
-  fetchDevRewards: (address: string) => Promise<void>
+  /** Combined fetch for both player and dev rewards in single batch (shares EpochInfo data) */
+  fetchAllRewards: (address: string, fetchPlayer: boolean, fetchDev: boolean) => Promise<void>
   /** Refresh faction standings and check for epoch changes. Returns true if epoch changed. */
   refreshFactionStandings: () => Promise<boolean>
   reset: () => void
@@ -204,7 +204,7 @@ export const useBlendizzardStore = create<BlendizzardState>()(
             throw new Error('Blendizzard contract address not configured')
           }
 
-          // We need to fetch the instance data which contains CurrentEpoch
+          // Fetch instance data which contains CurrentEpoch and Config
           const instanceKey = xdr.LedgerKey.contractData(
             new xdr.LedgerKeyContractData({
               contract: new (await import('@stellar/stellar-sdk')).Address(contractId).toScAddress(),
@@ -229,7 +229,6 @@ export const useBlendizzardStore = create<BlendizzardState>()(
                 const key = item.key()
                 const val = item.val()
 
-                // Check if this is CurrentEpoch
                 if (key.switch().name === 'scvVec') {
                   const vec = key.vec()
                   if (vec && vec.length > 0 && vec[0].switch().name === 'scvSymbol') {
@@ -257,21 +256,11 @@ export const useBlendizzardStore = create<BlendizzardState>()(
             }
           }
 
-          // Fetch current epoch info
-          let currentEpochInfo: EpochInfo | null = null
-          if (currentEpoch >= 0) {
-            const epochKey = buildStorageKey({ type: 'Epoch', epoch: currentEpoch })
-            const epochLedgerKey = storageKeyToLedgerKey(contractId, epochKey, 'temporary')
-            const epochResponse = await rpc.getLedgerEntries(epochLedgerKey)
-
-            if (epochResponse.entries && epochResponse.entries.length > 0) {
-              currentEpochInfo = parseEpochInfo(epochResponse.entries[0].val)
-            }
-          }
-
+          // Note: EpochInfo is now fetched in fetchAllPlayerData to combine RPC calls
+          // For logged-out users, we set currentEpochInfo to null (no epoch data displayed)
           set({
             currentEpoch,
-            currentEpochInfo,
+            currentEpochInfo: null, // Will be populated by fetchAllPlayerData
             config,
             isLoading: false,
           })
@@ -381,8 +370,8 @@ export const useBlendizzardStore = create<BlendizzardState>()(
         }
 
         try {
-          // Single batched RPC call for ALL player data and balances
-          const { player, epochPlayer, xlmBalance, usdcBalance, vaultBalance } =
+          // Single batched RPC call for ALL player data, balances, AND epoch info
+          const { player, epochPlayer, epochInfo, xlmBalance, usdcBalance, vaultBalance } =
             await getPlayerDataAndBalances(address, currentEpoch)
 
           // Calculate multipliers
@@ -402,6 +391,7 @@ export const useBlendizzardStore = create<BlendizzardState>()(
           set({
             player,
             epochPlayer,
+            currentEpochInfo: epochInfo,
             xlmBalance,
             usdcBalance,
             vaultBalance,
@@ -424,8 +414,8 @@ export const useBlendizzardStore = create<BlendizzardState>()(
         set({ isRefreshingBalances: true })
 
         try {
-          // Single batched RPC call for ALL player data and balances
-          const { player, epochPlayer, xlmBalance, usdcBalance, vaultBalance } =
+          // Single batched RPC call for ALL player data, balances, AND epoch info
+          const { player, epochPlayer, epochInfo, xlmBalance, usdcBalance, vaultBalance } =
             await getPlayerDataAndBalances(address, currentEpoch)
 
           // Calculate multipliers
@@ -445,6 +435,7 @@ export const useBlendizzardStore = create<BlendizzardState>()(
           set({
             player,
             epochPlayer,
+            currentEpochInfo: epochInfo,
             xlmBalance,
             usdcBalance,
             vaultBalance,
@@ -458,11 +449,19 @@ export const useBlendizzardStore = create<BlendizzardState>()(
         }
       },
 
-      fetchPlayerRewards: async (address: string) => {
+      fetchAllRewards: async (address: string, fetchPlayer: boolean, fetchDev: boolean) => {
         const { currentEpoch } = get()
 
+        // Early exit if nothing to fetch
+        if (!fetchPlayer && !fetchDev) {
+          return
+        }
+
         if (currentEpoch === null || currentEpoch < 1) {
-          set({ playerRewards: [] })
+          set({
+            playerRewards: fetchPlayer ? [] : get().playerRewards,
+            devRewards: fetchDev ? [] : get().devRewards,
+          })
           return
         }
 
@@ -475,150 +474,119 @@ export const useBlendizzardStore = create<BlendizzardState>()(
           const startEpoch = Math.max(0, currentEpoch - EPOCHS_TO_FETCH)
           const epochsToFetch = currentEpoch - startEpoch
 
-          // Build ledger keys for EpochPlayer data for each epoch
+          // Build ledger keys - share EpochInfo across both player and dev rewards
+          // Order: For each epoch: [EpochInfo, EpochPlayer?, EpochGame?]
           const keys: xdr.LedgerKey[] = []
-          for (let epoch = startEpoch; epoch < currentEpoch; epoch++) {
-            // EpochPlayer key
-            const epochPlayerKey = buildStorageKey({
-              type: 'EpochPlayer',
-              epoch,
-              address,
-            })
-            keys.push(storageKeyToLedgerKey(contractId, epochPlayerKey, 'temporary'))
+          const keysPerEpoch = 1 + (fetchPlayer ? 1 : 0) + (fetchDev ? 1 : 0)
 
-            // Epoch info key (to get winning faction and reward pool)
+          for (let epoch = startEpoch; epoch < currentEpoch; epoch++) {
+            // Always fetch EpochInfo (shared between player and dev rewards)
             const epochKey = buildStorageKey({ type: 'Epoch', epoch })
             keys.push(storageKeyToLedgerKey(contractId, epochKey, 'temporary'))
-          }
 
-          // Batch fetch all data
-          const results = await batchGetLedgerEntriesOrdered(
-            keys,
-            (data) => data // Return raw data for custom parsing
-          )
-
-          // Process results
-          const rewards: ClaimableReward[] = []
-
-          for (let i = 0; i < epochsToFetch; i++) {
-            const epoch = startEpoch + i
-            const epochPlayerData = results[i * 2]
-            const epochInfoData = results[i * 2 + 1]
-
-            if (!epochPlayerData || !epochInfoData) continue
-
-            const epochPlayer = parseEpochPlayer(epochPlayerData)
-            const epochInfo = parseEpochInfo(epochInfoData)
-
-            if (!epochPlayer || !epochInfo) continue
-
-            // Check if epoch is finalized and player was in winning faction
-            if (
-              epochInfo.isFinalized &&
-              epochInfo.winningFaction !== null &&
-              epochPlayer.epochFaction === epochInfo.winningFaction &&
-              epochPlayer.totalFpContributed > 0n
-            ) {
-              // Calculate estimated reward
-              // reward = (player_fp / winning_faction_total_fp) * reward_pool
-              const winningFactionFp = epochInfo.factionStandings.get(epochInfo.winningFaction) || 1n
-              const estimatedReward =
-                (epochPlayer.totalFpContributed * epochInfo.rewardPool) / winningFactionFp
-
-              rewards.push({
+            // EpochPlayer key (if fetching player rewards)
+            if (fetchPlayer) {
+              const epochPlayerKey = buildStorageKey({
+                type: 'EpochPlayer',
                 epoch,
-                amount: estimatedReward,
-                faction: epochPlayer.epochFaction,
-                isWinningFaction: true,
-                fpContributed: epochPlayer.totalFpContributed,
+                address,
               })
+              keys.push(storageKeyToLedgerKey(contractId, epochPlayerKey, 'temporary'))
+            }
+
+            // EpochGame key (if fetching dev rewards)
+            if (fetchDev) {
+              const epochGameKey = buildStorageKey({
+                type: 'EpochGame',
+                epoch,
+                address,
+              })
+              keys.push(storageKeyToLedgerKey(contractId, epochGameKey, 'temporary'))
             }
           }
 
-          set({ playerRewards: rewards, isLoadingRewards: false })
-        } catch (error) {
-          console.error('Error fetching player rewards:', error)
-          set({ playerRewards: [], isLoadingRewards: false })
-        }
-      },
-
-      fetchDevRewards: async (address: string) => {
-        const { currentEpoch } = get()
-
-        if (currentEpoch === null || currentEpoch < 1) {
-          set({ devRewards: [] })
-          return
-        }
-
-        set({ isLoadingRewards: true })
-
-        try {
-          const contractId = STELLAR_CONFIG.blendizzardContract
-
-          // Calculate epochs to fetch (last 100 finalized epochs)
-          const startEpoch = Math.max(0, currentEpoch - EPOCHS_TO_FETCH)
-          const epochsToFetch = currentEpoch - startEpoch
-
-          // Build ledger keys for EpochGame data for each epoch
-          // Use the connected address as the game address (assuming user is the game developer)
-          const keys: xdr.LedgerKey[] = []
-          for (let epoch = startEpoch; epoch < currentEpoch; epoch++) {
-            // EpochGame key (using connected address as game address)
-            const epochGameKey = buildStorageKey({
-              type: 'EpochGame',
-              epoch,
-              address,
-            })
-            keys.push(storageKeyToLedgerKey(contractId, epochGameKey, 'temporary'))
-
-            // Epoch info key (to get dev reward pool and total game FP)
-            const epochKey = buildStorageKey({ type: 'Epoch', epoch })
-            keys.push(storageKeyToLedgerKey(contractId, epochKey, 'temporary'))
-          }
-
-          // Batch fetch all data
+          // Single batch fetch for all data
           const results = await batchGetLedgerEntriesOrdered(
             keys,
             (data) => data // Return raw data for custom parsing
           )
 
           // Process results
-          const rewards: DevClaimableReward[] = []
+          const playerRewards: ClaimableReward[] = []
+          const devRewards: DevClaimableReward[] = []
 
           for (let i = 0; i < epochsToFetch; i++) {
             const epoch = startEpoch + i
-            const epochGameData = results[i * 2]
-            const epochInfoData = results[i * 2 + 1]
+            const baseIdx = i * keysPerEpoch
 
-            if (!epochGameData || !epochInfoData) continue
+            // Parse EpochInfo (always at baseIdx)
+            const epochInfoData = results[baseIdx]
+            if (!epochInfoData) continue
 
-            const epochGame = parseEpochGame(epochGameData)
             const epochInfo = parseEpochInfo(epochInfoData)
+            if (!epochInfo || !epochInfo.isFinalized) continue
 
-            if (!epochGame || !epochInfo) continue
+            // Parse EpochPlayer (if fetching player rewards)
+            if (fetchPlayer) {
+              const epochPlayerData = results[baseIdx + 1]
+              if (epochPlayerData) {
+                const epochPlayer = parseEpochPlayer(epochPlayerData)
+                if (
+                  epochPlayer &&
+                  epochInfo.winningFaction !== null &&
+                  epochPlayer.epochFaction === epochInfo.winningFaction &&
+                  epochPlayer.totalFpContributed > 0n
+                ) {
+                  const winningFactionFp = epochInfo.factionStandings.get(epochInfo.winningFaction) || 1n
+                  const estimatedReward =
+                    (epochPlayer.totalFpContributed * epochInfo.rewardPool) / winningFactionFp
 
-            // Check if epoch is finalized and game has contributions
-            if (epochInfo.isFinalized && epochGame.totalFpContributed > 0n && epochInfo.totalGameFp > 0n) {
-              // Calculate estimated dev reward
-              // dev_reward = (game_fp / total_game_fp) * dev_reward_pool
-              const estimatedReward =
-                (epochGame.totalFpContributed * epochInfo.devRewardPool) / epochInfo.totalGameFp
+                  playerRewards.push({
+                    epoch,
+                    amount: estimatedReward,
+                    faction: epochPlayer.epochFaction,
+                    isWinningFaction: true,
+                    fpContributed: epochPlayer.totalFpContributed,
+                  })
+                }
+              }
+            }
 
-              if (estimatedReward > 0n) {
-                rewards.push({
-                  epoch,
-                  gameAddress: address,
-                  amount: estimatedReward,
-                  fpContributed: epochGame.totalFpContributed,
-                })
+            // Parse EpochGame (if fetching dev rewards)
+            if (fetchDev) {
+              const epochGameIdx = baseIdx + (fetchPlayer ? 2 : 1)
+              const epochGameData = results[epochGameIdx]
+              if (epochGameData) {
+                const epochGame = parseEpochGame(epochGameData)
+                if (epochGame && epochGame.totalFpContributed > 0n && epochInfo.totalGameFp > 0n) {
+                  const estimatedReward =
+                    (epochGame.totalFpContributed * epochInfo.devRewardPool) / epochInfo.totalGameFp
+
+                  if (estimatedReward > 0n) {
+                    devRewards.push({
+                      epoch,
+                      developerAddress: address,
+                      amount: estimatedReward,
+                      fpContributed: epochGame.totalFpContributed,
+                    })
+                  }
+                }
               }
             }
           }
 
-          set({ devRewards: rewards, isLoadingRewards: false })
+          set({
+            playerRewards: fetchPlayer ? playerRewards : get().playerRewards,
+            devRewards: fetchDev ? devRewards : get().devRewards,
+            isLoadingRewards: false,
+          })
         } catch (error) {
-          console.error('Error fetching dev rewards:', error)
-          set({ devRewards: [], isLoadingRewards: false })
+          console.error('Error fetching rewards:', error)
+          set({
+            playerRewards: fetchPlayer ? [] : get().playerRewards,
+            devRewards: fetchDev ? [] : get().devRewards,
+            isLoadingRewards: false,
+          })
         }
       },
 

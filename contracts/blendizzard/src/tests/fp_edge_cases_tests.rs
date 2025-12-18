@@ -76,7 +76,17 @@ fn test_fp_with_zero_vault_balance() {
     let player2 = Address::generate(&env);
 
     // Disable free play for this test to verify zero-balance behavior
-    blendizzard.update_config(&None, &None, &None, &None, &None, &None, &Some(0), &None, &None);
+    blendizzard.update_config(
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+        &Some(0),
+        &None,
+        &None,
+    );
 
     blendizzard.select_faction(&player1, &0); // WholeNoodle
     blendizzard.select_faction(&player2, &1); // PointyStick

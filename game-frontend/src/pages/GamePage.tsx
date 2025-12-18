@@ -12,6 +12,7 @@ import ShareInvite from '@/components/ShareInvite'
 import Confetti from '@/components/Confetti'
 import * as numberGuessService from '@/services/numberGuessService'
 import * as blendizzardService from '@/services/blendizzardService'
+import { preFillFpCache } from '@/hooks/useAvailableFp'
 import { walletBridge } from '@/services/walletBridge'
 
 export default function GamePage() {
@@ -37,6 +38,7 @@ export default function GamePage() {
     setInviteAuthXdr,
     wagerInput,
     setWagerInput,
+    setAvailableFp,
     reset,
   } = useGameStore()
 
@@ -100,20 +102,24 @@ export default function GamePage() {
     }
   }, [wagerFromUrl, setWagerInput])
 
-  // Check if player has selected a faction
+  // Check if player has selected a faction AND pre-fetch available FP in one batched call
+  // This reduces 5 RPC calls down to 1-2 on initial page load
   useEffect(() => {
     if (!address || factionCheckRef.current) return
     factionCheckRef.current = true
 
-    const checkFaction = async () => {
+    const loadInitialData = async () => {
       setCheckingFaction(true)
-      const hasFactionSelected = await blendizzardService.hasFactionSelected(address)
-      setHasFaction(hasFactionSelected)
+      const data = await blendizzardService.getGamePageData(address)
+      setHasFaction(data.hasFaction)
+      // Set the store value directly AND fill the cache for other components
+      setAvailableFp(data.availableFp)
+      preFillFpCache(address, data.availableFp)
       setCheckingFaction(false)
     }
 
-    checkFaction()
-  }, [address])
+    loadInitialData()
+  }, [address, setAvailableFp])
 
   // Fetch game state
   const fetchGameState = useCallback(async () => {
@@ -284,9 +290,59 @@ export default function GamePage() {
       }
 
       if (mode === 'create') {
-        // Show setup UI and let user click "Create Game" when ready
-        // Don't auto-trigger - user should review wager first
-        setPhase('setup')
+        // If wager is provided in URL (user came from lobby), auto-trigger creation
+        // Otherwise show setup UI for user to enter wager
+        if (wagerFromUrl) {
+          // Set wager and trigger auto-creation
+          setWagerInput(wagerFromUrl)
+          setPhase('creating')
+
+          // Trigger game creation (similar to handleCreateGame but inline)
+          const autoCreate = async () => {
+            // Pre-open popup synchronously
+            const preopenResult = walletBridge.preopen()
+            if ('error' in preopenResult) {
+              setError(preopenResult.error)
+              setPhase('setup')
+              return
+            }
+
+            try {
+              const wager = parseWager(wagerFromUrl)
+              const result = await numberGuessService.prepareStartGame(sessionId, address, wager)
+
+              if ('error' in result) {
+                throw new Error(result.error)
+              }
+
+              setInviteAuthXdr(result.authEntryXdr)
+              setPhase('waiting')
+              setPollingActive(true)
+
+              const authExpirationLedger = numberGuessService.getAuthEntryExpirationLedger(result.authEntryXdr)
+
+              addPendingGame({
+                sessionId,
+                playerAddress: address,
+                role: 'player1',
+                authEntryXdr: result.authEntryXdr,
+                authExpirationLedger: authExpirationLedger ?? undefined,
+                wager: wagerFromUrl,
+                status: 'waiting_for_player2',
+              })
+
+              fetchGameState()
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Failed to create game')
+              setPhase('setup')
+            }
+          }
+
+          autoCreate()
+        } else {
+          // No wager in URL - show setup UI for user to enter wager
+          setPhase('setup')
+        }
         return
       }
 
@@ -438,6 +494,15 @@ export default function GamePage() {
     // Use ref for synchronous check - state updates are async and won't block fast duplicate calls
     if (createInProgressRef.current) return
     createInProgressRef.current = true
+
+    // Pre-open popup synchronously BEFORE any state updates (Safari popup blocker)
+    // This must happen in the user gesture context before any async work or re-renders
+    const preopen = walletBridge.preopen()
+    if ('error' in preopen) {
+      setError(preopen.error)
+      createInProgressRef.current = false
+      return
+    }
 
     setLoading(true)
     setError(null)

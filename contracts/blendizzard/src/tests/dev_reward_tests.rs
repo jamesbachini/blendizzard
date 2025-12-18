@@ -25,11 +25,11 @@ use soroban_sdk::{vec, Address, Env};
 fn setup_dev_reward_test_env<'a>(
     env: &'a Env,
 ) -> (
-    Address,                                  // admin
-    MockVaultClient<'a>,                      // mock vault
-    BlendizzardClient<'a>,                    // blendizzard client
-    super::soroswap_utils::TokenClient<'a>,   // BLND token client
-    super::soroswap_utils::TokenClient<'a>,   // USDC token client
+    Address,                                // admin
+    MockVaultClient<'a>,                    // mock vault
+    BlendizzardClient<'a>,                  // blendizzard client
+    super::soroswap_utils::TokenClient<'a>, // BLND token client
+    super::soroswap_utils::TokenClient<'a>, // USDC token client
 ) {
     use super::soroswap_utils::{add_liquidity, create_factory, create_router, create_token};
 
@@ -83,8 +83,8 @@ fn setup_dev_reward_test_env<'a>(
         &usdc_token,
         epoch_duration,
         reserve_token_ids,
-        100_0000000,    // free_fp_per_epoch
-        1_0000000,      // min_deposit_to_claim
+        100_0000000, // free_fp_per_epoch
+        1_0000000,   // min_deposit_to_claim
     );
 
     (
@@ -109,8 +109,7 @@ fn setup_dev_reward_test_env<'a>(
 #[test]
 fn test_basic_dev_reward_claim() {
     let env = setup_test_env();
-    let (_admin, mock_vault, blendizzard, blnd_token, usdc_token) =
-        setup_dev_reward_test_env(&env);
+    let (_admin, mock_vault, blendizzard, blnd_token, usdc_token) = setup_dev_reward_test_env(&env);
 
     // Register game with developer
     let game_contract = Address::generate(&env);
@@ -158,8 +157,8 @@ fn test_basic_dev_reward_claim() {
     let usdc_client = super::soroswap_utils::TokenClient::new(&env, &usdc_token.address);
     let dev_balance_before = usdc_client.balance(&developer);
 
-    // Developer claims reward
-    let reward = blendizzard.claim_dev_reward(&game_contract, &0);
+    // Developer claims reward (now using developer address, not game_contract)
+    let reward = blendizzard.claim_dev_reward(&developer, &0);
 
     // Verify reward
     assert!(reward > 0, "Developer should receive reward");
@@ -228,9 +227,9 @@ fn test_dev_reward_proportional_to_game_fp() {
         .with_mut(|li| li.timestamp = epoch0.start_time + 345_600);
     blendizzard.cycle_epoch();
 
-    // Claim dev rewards
-    let reward1 = blendizzard.claim_dev_reward(&game1, &0);
-    let reward2 = blendizzard.claim_dev_reward(&game2, &0);
+    // Claim dev rewards (using developer addresses)
+    let reward1 = blendizzard.claim_dev_reward(&dev1, &0);
+    let reward2 = blendizzard.claim_dev_reward(&dev2, &0);
 
     // Game2 had 2x the FP contribution, should get ~2x the reward
     let ratio = reward2 as f64 / reward1 as f64;
@@ -283,12 +282,12 @@ fn test_dev_cannot_claim_twice() {
         .with_mut(|li| li.timestamp = epoch0.start_time + 345_600);
     blendizzard.cycle_epoch();
 
-    // First claim succeeds
-    let reward = blendizzard.claim_dev_reward(&game_contract, &0);
+    // First claim succeeds (using developer address)
+    let reward = blendizzard.claim_dev_reward(&developer, &0);
     assert!(reward > 0);
 
     // Second claim should fail
-    let result = blendizzard.try_claim_dev_reward(&game_contract, &0);
+    let result = blendizzard.try_claim_dev_reward(&developer, &0);
     assert_contract_error(&result, Error::DevRewardAlreadyClaimed);
 }
 
@@ -319,19 +318,19 @@ fn test_dev_cannot_claim_before_epoch_finalized() {
     blendizzard.start_game(&game_contract, &1, &p1, &p2, &100_0000000, &100_0000000);
     blendizzard.end_game(&1, &true);
 
-    // Try to claim BEFORE epoch cycle - should fail
-    let result = blendizzard.try_claim_dev_reward(&game_contract, &0);
+    // Try to claim BEFORE epoch cycle - should fail (using developer address)
+    let result = blendizzard.try_claim_dev_reward(&developer, &0);
     assert_contract_error(&result, Error::EpochNotFinalized);
 }
 
-/// Test that game with no contributions cannot claim
+/// Test that developer with no contributions cannot claim
 #[test]
 fn test_game_no_contributions_cannot_claim() {
     let env = setup_test_env();
     let (_admin, mock_vault, blendizzard, blnd_token, _usdc_token) =
         setup_dev_reward_test_env(&env);
 
-    // Register two games
+    // Register two games with different developers
     let game1 = Address::generate(&env);
     let game2 = Address::generate(&env); // This one won't have any games played
     let dev1 = Address::generate(&env);
@@ -360,21 +359,24 @@ fn test_game_no_contributions_cannot_claim() {
         .with_mut(|li| li.timestamp = epoch0.start_time + 345_600);
     blendizzard.cycle_epoch();
 
-    // Game1 can claim
-    let reward = blendizzard.claim_dev_reward(&game1, &0);
+    // Dev1 can claim (using developer address)
+    let reward = blendizzard.claim_dev_reward(&dev1, &0);
     assert!(reward > 0);
 
-    // Game2 cannot claim (no contributions)
-    let result = blendizzard.try_claim_dev_reward(&game2, &0);
+    // Dev2 cannot claim (no contributions from their game)
+    let result = blendizzard.try_claim_dev_reward(&dev2, &0);
     assert_contract_error(&result, Error::GameNoContributions);
 }
 
-/// Test that removed game cannot claim dev rewards
+/// Test that developer CAN claim after game is removed
+///
+/// With per-developer tracking, FP contributions are recorded to the developer
+/// address, not the game address. So even if a game is removed mid-epoch,
+/// the developer who owned it keeps their earned FP and can claim rewards.
 #[test]
-fn test_removed_game_cannot_claim() {
+fn test_removed_game_developer_can_still_claim() {
     let env = setup_test_env();
-    let (_admin, mock_vault, blendizzard, blnd_token, _usdc_token) =
-        setup_dev_reward_test_env(&env);
+    let (_admin, mock_vault, blendizzard, blnd_token, usdc_token) = setup_dev_reward_test_env(&env);
 
     let game_contract = Address::generate(&env);
     let developer = Address::generate(&env);
@@ -396,24 +398,42 @@ fn test_removed_game_cannot_claim() {
     blendizzard.start_game(&game_contract, &1, &p1, &p2, &100_0000000, &100_0000000);
     blendizzard.end_game(&1, &true);
 
-    // Remove game BEFORE epoch cycle
+    // Remove game BEFORE epoch cycle - this no longer affects dev claims
     blendizzard.remove_game(&game_contract);
 
     env.ledger()
         .with_mut(|li| li.timestamp = epoch0.start_time + 345_600);
     blendizzard.cycle_epoch();
 
-    // Cannot claim because game is removed
-    let result = blendizzard.try_claim_dev_reward(&game_contract, &0);
-    assert_contract_error(&result, Error::GameNotRegistered);
+    // Track developer USDC balance before claim
+    let usdc_client = super::soroswap_utils::TokenClient::new(&env, &usdc_token.address);
+    let dev_balance_before = usdc_client.balance(&developer);
+
+    // Developer CAN still claim - FP was recorded to their address
+    let reward = blendizzard.claim_dev_reward(&developer, &0);
+    assert!(
+        reward > 0,
+        "Developer should still receive reward after game removal"
+    );
+
+    // Verify USDC was transferred
+    let dev_balance_after = usdc_client.balance(&developer);
+    assert_eq!(
+        dev_balance_after - dev_balance_before,
+        reward,
+        "Developer should receive USDC transfer"
+    );
 }
 
-/// Test that re-adding game with new developer gives rewards to new developer
+/// Test that mid-epoch developer change gives fair split of rewards
+///
+/// With per-developer tracking, FP earned BEFORE developer change goes to
+/// original developer, FP earned AFTER change goes to new developer.
+/// This is fairer than the old system where the new developer got everything.
 #[test]
-fn test_developer_change_gives_rewards_to_new_dev() {
+fn test_developer_change_gives_fair_split() {
     let env = setup_test_env();
-    let (_admin, mock_vault, blendizzard, blnd_token, usdc_token) =
-        setup_dev_reward_test_env(&env);
+    let (_admin, mock_vault, blendizzard, blnd_token, usdc_token) = setup_dev_reward_test_env(&env);
 
     let game_contract = Address::generate(&env);
     let original_dev = Address::generate(&env);
@@ -434,53 +454,105 @@ fn test_developer_change_gives_rewards_to_new_dev() {
     env.ledger()
         .with_mut(|li| li.timestamp = epoch0.start_time + 1000);
 
+    // First game - FP goes to original_dev
     blendizzard.start_game(&game_contract, &1, &p1, &p2, &100_0000000, &100_0000000);
     blendizzard.end_game(&1, &true);
 
     // Change developer by re-adding game with new developer
     blendizzard.add_game(&game_contract, &new_dev);
 
+    // Second game - FP goes to new_dev
+    blendizzard.start_game(&game_contract, &2, &p1, &p2, &100_0000000, &100_0000000);
+    blendizzard.end_game(&2, &true);
+
     env.ledger()
         .with_mut(|li| li.timestamp = epoch0.start_time + 345_600);
     blendizzard.cycle_epoch();
 
-    // Track new dev's balance
+    // Track balances
     let usdc_client = super::soroswap_utils::TokenClient::new(&env, &usdc_token.address);
-    let new_dev_balance_before = usdc_client.balance(&new_dev);
     let original_dev_balance_before = usdc_client.balance(&original_dev);
+    let new_dev_balance_before = usdc_client.balance(&new_dev);
 
-    // New developer claims (not original)
-    let reward = blendizzard.claim_dev_reward(&game_contract, &0);
-    assert!(reward > 0);
-
-    // New dev's balance should increase
-    let new_dev_balance_after = usdc_client.balance(&new_dev);
-    assert_eq!(
-        new_dev_balance_after - new_dev_balance_before,
-        reward,
-        "New developer should receive the reward"
+    // Original developer claims their portion (from game 1)
+    let original_reward = blendizzard.claim_dev_reward(&original_dev, &0);
+    assert!(
+        original_reward > 0,
+        "Original dev should have reward from game 1"
     );
 
-    // Original dev's balance should NOT change
+    // New developer claims their portion (from game 2)
+    let new_reward = blendizzard.claim_dev_reward(&new_dev, &0);
+    assert!(new_reward > 0, "New dev should have reward from game 2");
+
+    // Both should have received roughly equal rewards (since both games had same wagers)
     let original_dev_balance_after = usdc_client.balance(&original_dev);
+    let new_dev_balance_after = usdc_client.balance(&new_dev);
+
     assert_eq!(
-        original_dev_balance_after, original_dev_balance_before,
-        "Original developer should NOT receive any reward"
+        original_dev_balance_after - original_dev_balance_before,
+        original_reward,
+        "Original dev should receive their USDC"
+    );
+
+    assert_eq!(
+        new_dev_balance_after - new_dev_balance_before,
+        new_reward,
+        "New dev should receive their USDC"
+    );
+
+    // Rewards should be roughly equal since both games had same FP
+    let ratio = original_reward as f64 / new_reward as f64;
+    assert!(
+        ratio > 0.9 && ratio < 1.1,
+        "Both devs should get roughly equal rewards. Ratio={}",
+        ratio
     );
 }
 
-/// Test unregistered game cannot claim
+/// Test that address with no contributions cannot claim
+///
+/// Any random address trying to claim will get GameNoContributions
+/// since they have no FP recorded in any epoch.
 #[test]
-fn test_unregistered_game_cannot_claim() {
+fn test_address_with_no_contributions_cannot_claim() {
     let env = setup_test_env();
-    let (_admin, _mock_vault, blendizzard, _blnd_token, _usdc_token) =
+    let (_admin, mock_vault, blendizzard, blnd_token, _usdc_token) =
         setup_dev_reward_test_env(&env);
 
-    // Game that was never registered
-    let fake_game = Address::generate(&env);
+    // Register a game with a real developer
+    let game_contract = Address::generate(&env);
+    let real_developer = Address::generate(&env);
+    blendizzard.add_game(&game_contract, &real_developer);
 
-    let result = blendizzard.try_claim_dev_reward(&fake_game, &0);
-    assert_contract_error(&result, Error::GameNotRegistered);
+    // Setup players
+    let p1 = Address::generate(&env);
+    let p2 = Address::generate(&env);
+    blendizzard.select_faction(&p1, &0);
+    blendizzard.select_faction(&p2, &1);
+    mock_vault.set_user_balance(&p1, &1000_0000000);
+    mock_vault.set_user_balance(&p2, &1000_0000000);
+
+    blnd_token.mint(&blendizzard.address, &5000_0000000);
+
+    let epoch0 = blendizzard.get_epoch(&0);
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch0.start_time + 1000);
+
+    // Play a game so there's activity in the epoch
+    blendizzard.start_game(&game_contract, &1, &p1, &p2, &100_0000000, &100_0000000);
+    blendizzard.end_game(&1, &true);
+
+    // Cycle the epoch so it's finalized
+    env.ledger()
+        .with_mut(|li| li.timestamp = epoch0.start_time + 345_600);
+    blendizzard.cycle_epoch();
+
+    // Random address that was never a developer for any game
+    let random_address = Address::generate(&env);
+
+    let result = blendizzard.try_claim_dev_reward(&random_address, &0);
+    assert_contract_error(&result, Error::GameNoContributions);
 }
 
 // ============================================================================
@@ -582,11 +654,11 @@ fn test_total_dev_claims_not_exceed_pool() {
     let epoch_info = blendizzard.get_epoch(&0);
     let dev_reward_pool = epoch_info.dev_reward_pool;
 
-    // All devs claim
+    // All devs claim (using developer addresses)
     let mut total_claimed = 0i128;
     for i in 0..5 {
-        let game = games.get(i).unwrap();
-        let reward = blendizzard.claim_dev_reward(&game, &0);
+        let dev = devs.get(i).unwrap();
+        let reward = blendizzard.claim_dev_reward(&dev, &0);
         total_claimed += reward;
     }
 

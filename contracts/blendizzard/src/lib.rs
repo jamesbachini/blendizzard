@@ -549,27 +549,29 @@ impl Blendizzard {
         rewards::claim_epoch_reward(&env, &player, epoch)
     }
 
-    /// Claim developer reward for a game in a specific epoch
+    /// Claim developer reward for a specific epoch
     ///
-    /// Game developers can claim their share of the epoch's dev reward pool
-    /// proportional to the total FP contributed through their game.
+    /// Developers claim their aggregated share of the epoch's dev reward pool
+    /// proportional to total FP contributed through all their registered games.
     ///
     /// **Note:** To check claimable amounts or claim status before calling,
     /// use transaction simulation. This is the idiomatic Soroban pattern.
+    ///
+    /// # Arguments
+    /// * `developer` - Developer address claiming rewards
+    /// * `epoch` - Epoch number to claim from
     ///
     /// # Returns
     /// Amount of USDC claimed and transferred to developer
     ///
     /// # Errors
-    /// * `GameNotRegistered` - If game is not registered
-    /// * `NotGameDeveloper` - If caller is not the registered developer
     /// * `EpochNotFinalized` - If epoch doesn't exist or isn't finalized
-    /// * `DevRewardAlreadyClaimed` - If already claimed for this game/epoch
-    /// * `GameNoContributions` - If game has no contributions this epoch
+    /// * `DevRewardAlreadyClaimed` - If already claimed for this epoch
+    /// * `GameNoContributions` - If developer has no contributions this epoch
     /// * `ContractPaused` - If contract is in emergency pause mode
-    pub fn claim_dev_reward(env: Env, game_id: Address, epoch: u32) -> Result<i128, Error> {
+    pub fn claim_dev_reward(env: Env, developer: Address, epoch: u32) -> Result<i128, Error> {
         storage::require_not_paused(&env)?;
-        rewards::claim_dev_reward(&env, &game_id, epoch)
+        rewards::claim_dev_reward(&env, &developer, epoch)
     }
 }
 

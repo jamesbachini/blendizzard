@@ -235,6 +235,10 @@ export async function batchGetLedgerEntries<T>(
 
 /**
  * Fetch ledger entries and return them in order, with nulls for missing entries
+ *
+ * IMPORTANT: Stellar RPC getLedgerEntries only returns found entries (missing keys
+ * are omitted, not returned as null), and order is not guaranteed. This function
+ * matches returned entries to their original keys by comparing the key field.
  */
 export async function batchGetLedgerEntriesOrdered<T>(
   keys: xdr.LedgerKey[],
@@ -243,6 +247,12 @@ export async function batchGetLedgerEntriesOrdered<T>(
   const rpcClient = getRpc()
   const results: (T | null)[] = new Array(keys.length).fill(null)
 
+  // Convert keys to base64 for matching (since getLedgerEntries returns keys in XDR format)
+  const keyB64Map = new Map<string, number>()
+  keys.forEach((key, index) => {
+    keyB64Map.set(key.toXDR('base64'), index)
+  })
+
   // Split into batches of 200
   for (let i = 0; i < keys.length; i += MAX_LEDGER_ENTRIES_PER_REQUEST) {
     const batch = keys.slice(i, i + MAX_LEDGER_ENTRIES_PER_REQUEST)
@@ -250,12 +260,14 @@ export async function batchGetLedgerEntriesOrdered<T>(
     try {
       const response = await rpcClient.getLedgerEntries(...batch)
 
-      // The response entries correspond 1:1 with the requested keys
+      // Match each returned entry to its original key position
       if (response.entries) {
-        for (let j = 0; j < batch.length; j++) {
-          const entry = response.entries[j]
-          if (entry) {
-            results[i + j] = parser(entry.val)
+        for (const entry of response.entries) {
+          // The entry has a 'key' field that matches the original requested key
+          const entryKeyB64 = entry.key.toXDR('base64')
+          const originalIndex = keyB64Map.get(entryKeyB64)
+          if (originalIndex !== undefined) {
+            results[originalIndex] = parser(entry.val)
           }
         }
       }
@@ -553,8 +565,8 @@ export async function getAllBalances(address: string): Promise<{
 }
 
 /**
- * Get all player data and balances
- * This combines player, epochPlayer, and all balances into parallel requests
+ * Get all player data, balances, and current epoch info in a single RPC call
+ * This combines player, epochPlayer, epochInfo, and all balances into one request
  *
  * Note: vaultBalance is fetched via contract simulation (get_underlying_tokens)
  * to get the actual USDC value, not just the share count.
@@ -565,6 +577,7 @@ export async function getPlayerDataAndBalances(
 ): Promise<{
   player: Player | null
   epochPlayer: EpochPlayer | null
+  epochInfo: EpochInfo | null
   xlmBalance: bigint
   usdcBalance: bigint
   vaultBalance: bigint
@@ -573,7 +586,7 @@ export async function getPlayerDataAndBalances(
   const contractId = STELLAR_CONFIG.blendizzardContract
 
   try {
-    // Build ledger keys for player data and token balances
+    // Build ledger keys for player data, epoch info, and token balances
     const playerKey = buildStorageKey({ type: 'Player', address })
     const playerLedgerKey = storageKeyToLedgerKey(contractId, playerKey, 'persistent')
 
@@ -584,9 +597,14 @@ export async function getPlayerDataAndBalances(
     })
     const epochPlayerLedgerKey = storageKeyToLedgerKey(contractId, epochPlayerKey, 'temporary')
 
+    // Add EpochInfo key to combine fetches
+    const epochInfoKey = buildStorageKey({ type: 'Epoch', epoch: currentEpoch })
+    const epochInfoLedgerKey = storageKeyToLedgerKey(contractId, epochInfoKey, 'temporary')
+
     const keys = [
       playerLedgerKey,
       epochPlayerLedgerKey,
+      epochInfoLedgerKey,
       buildTokenBalanceKey(STELLAR_CONFIG.nativeTokenContract, address),
       buildTokenBalanceKey(STELLAR_CONFIG.usdcTokenContract, address),
     ]
@@ -599,6 +617,7 @@ export async function getPlayerDataAndBalances(
 
     let player: Player | null = null
     let epochPlayer: EpochPlayer | null = null
+    let epochInfo: EpochInfo | null = null
     let xlmBalance = 0n
     let usdcBalance = 0n
 
@@ -621,6 +640,8 @@ export async function getPlayerDataAndBalances(
                   player = parsePlayer(entry.val)
                 } else if (symbol === 'EpochPlayer') {
                   epochPlayer = parseEpochPlayer(entry.val)
+                } else if (symbol === 'Epoch') {
+                  epochInfo = parseEpochInfo(entry.val)
                 }
               }
             }
@@ -636,12 +657,13 @@ export async function getPlayerDataAndBalances(
       }
     }
 
-    return { player, epochPlayer, xlmBalance, usdcBalance, vaultBalance }
+    return { player, epochPlayer, epochInfo, xlmBalance, usdcBalance, vaultBalance }
   } catch (error) {
     console.error('Error fetching player data and balances:', error)
     return {
       player: null,
       epochPlayer: null,
+      epochInfo: null,
       xlmBalance: 0n,
       usdcBalance: 0n,
       vaultBalance: 0n,

@@ -139,7 +139,17 @@ fn test_admin_functions_work_when_paused() {
 
     // Admin can update config (just verify it doesn't error)
     let new_router = Address::generate(&env);
-    blendizzard.update_config(&Some(new_router.clone()), &None, &None, &None, &None, &None, &None, &None, &None);
+    blendizzard.update_config(
+        &Some(new_router.clone()),
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None,
+    );
 
     // Config should be updated (just verify get_config works)
     let _config = blendizzard.get_config();

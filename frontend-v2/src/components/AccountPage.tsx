@@ -121,8 +121,7 @@ export function AccountPage() {
     fetchProtocolData,
     fetchAllPlayerData,
     refreshBalances,
-    fetchPlayerRewards,
-    fetchDevRewards,
+    fetchAllRewards,
     refreshFactionStandings,
     reset,
   } = useBlendizzardStore()
@@ -176,18 +175,12 @@ export function AccountPage() {
     }
   }, [address, currentEpoch, fetchAllPlayerData])
 
-  // Fetch rewards when enabled
+  // Fetch rewards when enabled (combined single RPC call for both player and dev)
   useEffect(() => {
-    if (address && isPlayer) {
-      fetchPlayerRewards(address)
+    if (address && currentEpoch !== null && (isPlayer || isDeveloper)) {
+      fetchAllRewards(address, isPlayer, isDeveloper)
     }
-  }, [address, isPlayer, currentEpoch, fetchPlayerRewards])
-
-  useEffect(() => {
-    if (address && isDeveloper) {
-      fetchDevRewards(address)
-    }
-  }, [address, isDeveloper, currentEpoch, fetchDevRewards])
+  }, [address, isPlayer, isDeveloper, currentEpoch, fetchAllRewards])
 
   // Countdown timer
   useEffect(() => {
@@ -203,15 +196,14 @@ export function AccountPage() {
   useEffect(() => {
     const interval = setInterval(async () => {
       const epochChanged = await refreshFactionStandings()
-      if (epochChanged && address && isPlayer) {
-        // Epoch changed - refresh player rewards
-        fetchPlayerRewards(address)
-        // Also refresh player data for new epoch
+      if (epochChanged && address && (isPlayer || isDeveloper)) {
+        // Epoch changed - refresh rewards and player data
+        fetchAllRewards(address, isPlayer, isDeveloper)
         fetchAllPlayerData(address)
       }
     }, 30000)
     return () => clearInterval(interval)
-  }, [refreshFactionStandings, address, isPlayer, fetchPlayerRewards, fetchAllPlayerData])
+  }, [refreshFactionStandings, address, isPlayer, isDeveloper, fetchAllRewards, fetchAllPlayerData])
 
   const handleDisconnect = async () => {
     await disconnectWallet()
@@ -260,9 +252,9 @@ export function AccountPage() {
       if (result.success) {
         setActionSuccess(`Epoch cycled! New epoch: ${result.newEpoch}`)
         fetchProtocolData()
-        // Refresh player rewards after epoch cycle
-        if (isPlayer) {
-          fetchPlayerRewards(address)
+        // Refresh rewards after epoch cycle
+        if (isPlayer || isDeveloper) {
+          fetchAllRewards(address, isPlayer, isDeveloper)
         }
         // Refresh player data for new epoch
         fetchAllPlayerData(address)
@@ -349,7 +341,7 @@ export function AccountPage() {
       const result = await claimEpochReward(address, epoch)
       if (result.success) {
         setActionSuccess(`Claimed reward for epoch ${epoch}!`)
-        fetchPlayerRewards(address)
+        fetchAllRewards(address, true, false)
         fetchAllPlayerData(address)
       } else {
         setActionError(result.error || 'Failed to claim reward')
@@ -361,17 +353,16 @@ export function AccountPage() {
     }
   }
 
-  const handleClaimDevReward = async (gameId: string, epoch: number) => {
+  const handleClaimDevReward = async (epoch: number) => {
+    if (!address) return
     clearMessages()
     setIsSubmitting(true)
     try {
-      const result = await claimDevReward(gameId, epoch)
+      const result = await claimDevReward(address, epoch)
       if (result.success) {
         setActionSuccess(`Claimed dev reward for epoch ${epoch}!`)
-        if (address) {
-          fetchDevRewards(address)
-          fetchAllPlayerData(address)
-        }
+        fetchAllRewards(address, false, true)
+        fetchAllPlayerData(address)
       } else {
         setActionError(result.error || 'Failed to claim dev reward')
       }
@@ -829,13 +820,13 @@ export function AccountPage() {
                 <div className="space-y-2 max-h-60 overflow-y-auto">
                   {devRewards.map((reward) => (
                     <div
-                      key={`${reward.epoch}-${reward.gameAddress}`}
+                      key={reward.epoch}
                       className="border border-terminal-dim p-3 flex items-center justify-between"
                     >
                       <div>
                         <span className="text-terminal-fg text-sm">EPOCH {reward.epoch}</span>
                         <span className="text-terminal-dim text-xs ml-2">
-                          {truncateAddress(reward.gameAddress)}
+                          {formatUSDC(reward.fpContributed, 0)} FP
                         </span>
                       </div>
                       <div className="flex items-center gap-4">
@@ -843,7 +834,7 @@ export function AccountPage() {
                           ${formatUSDC(reward.amount)}
                         </span>
                         <button
-                          onClick={() => handleClaimDevReward(reward.gameAddress, reward.epoch)}
+                          onClick={() => handleClaimDevReward(reward.epoch)}
                           disabled={isSubmitting}
                           className="text-xs border border-terminal-dim px-3 py-1 hover:bg-terminal-fg/10 disabled:opacity-50"
                         >

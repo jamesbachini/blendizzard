@@ -142,8 +142,6 @@ pub struct RewardsClaimed {
 #[contractevent]
 pub struct DevRewardClaimed {
     #[topic]
-    pub game_id: Address,
-    #[topic]
     pub developer: Address,
     pub epoch: u32,
     pub fp_contributed: i128,
@@ -319,14 +317,12 @@ pub(crate) fn emit_rewards_claimed(
 /// Emit developer reward claimed event
 pub(crate) fn emit_dev_reward_claimed(
     env: &Env,
-    game_id: &Address,
     developer: &Address,
     epoch: u32,
     fp_contributed: i128,
     amount: i128,
 ) {
     DevRewardClaimed {
-        game_id: game_id.clone(),
         developer: developer.clone(),
         epoch,
         fp_contributed,
