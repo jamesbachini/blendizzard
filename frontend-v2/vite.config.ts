@@ -14,7 +14,12 @@ export default defineConfig({
     global: 'globalThis',
   },
   optimizeDeps: {
-    include: ['buffer', '@stellar/stellar-sdk'],
+    include: [
+      'buffer',
+      '@stellar/stellar-sdk',
+      '@stellar/stellar-sdk/contract',
+      '@stellar/stellar-sdk/rpc',
+    ],
   },
   build: {
     outDir: 'dist',
