@@ -17,6 +17,12 @@ export interface Config {
    */
     blnd_token: string;
     /**
+   * Developer reward share as fixed-point (7 decimals)
+   * Portion of epoch rewards allocated to game developers
+   * Default: 1_000_000 (10% = 0.10 with 7 decimals)
+   */
+    dev_reward_share: i128;
+    /**
    * Duration of each epoch in seconds (default: 4 days = 345,600 seconds)
    */
     epoch_duration: u64;
@@ -76,11 +82,40 @@ export interface Player {
     time_multiplier_start: u64;
 }
 /**
+ * Game registration info (Persistent storage)
+ *
+ * Stores the developer address for whitelisted games.
+ * Used to track FP contributions and developer reward claims.
+ */
+export interface GameInfo {
+    /**
+   * Developer address who receives reward share for this game
+   */
+    developer: string;
+}
+/**
+ * Per-epoch game contribution tracking (Temporary storage)
+ *
+ * Tracks total FP contributed through a game during an epoch.
+ * Used to calculate developer's share of the reward pool.
+ */
+export interface EpochGame {
+    /**
+   * Total FP from all games (both player wagers combined)
+   */
+    total_fp_contributed: i128;
+}
+/**
  * Epoch metadata
  *
  * Stores all information about an epoch including timing, standings, and rewards.
  */
 export interface EpochInfo {
+    /**
+   * Developer reward pool (portion of rewards for game developers)
+   * Set during cycle_epoch: total_rewards * dev_reward_share
+   */
+    dev_reward_pool: i128;
     /**
    * Unix timestamp when this epoch ends (start_time + epoch_duration)
    */
@@ -95,13 +130,19 @@ export interface EpochInfo {
    */
     is_finalized: boolean;
     /**
-   * Total USDC available for reward distribution (set during cycle_epoch)
+   * Total USDC available for player reward distribution (set during cycle_epoch)
+   * This is 90% of total rewards (after dev share is deducted)
    */
     reward_pool: i128;
     /**
    * Unix timestamp when this epoch started
    */
     start_time: u64;
+    /**
+   * Total FP wagered across all games this epoch
+   * Used to calculate each game's share of the dev reward pool
+   */
+    total_game_fp: i128;
     /**
    * The winning faction (None until epoch is finalized)
    */
@@ -319,6 +360,30 @@ export declare const Errors: {
     70: {
         message: string;
     };
+    /**
+     * Game is not registered (for dev claims)
+     */
+    80: {
+        message: string;
+    };
+    /**
+     * Game has no contributions in this epoch
+     */
+    81: {
+        message: string;
+    };
+    /**
+     * Developer has already claimed reward for this game/epoch
+     */
+    82: {
+        message: string;
+    };
+    /**
+     * Caller is not the registered developer for this game
+     */
+    83: {
+        message: string;
+    };
 };
 export type DataKey = {
     tag: "Admin";
@@ -348,7 +413,13 @@ export type DataKey = {
     tag: "Game";
     values: readonly [string];
 } | {
+    tag: "EpochGame";
+    values: readonly [u32, string];
+} | {
     tag: "Claimed";
+    values: readonly [string, u32];
+} | {
+    tag: "DevClaimed";
     values: readonly [string, u32];
 };
 export interface Client {
@@ -367,8 +438,8 @@ export interface Client {
      * Construct and simulate a is_game transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
      * Check if a contract is an approved game
      */
-    is_game: ({ id }: {
-        id: string;
+    is_game: ({ game_id }: {
+        game_id: string;
     }, options?: MethodOptions) => Promise<AssembledTransaction<boolean>>;
     /**
      * Construct and simulate a unpause transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -392,13 +463,21 @@ export interface Client {
     }, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>;
     /**
      * Construct and simulate a add_game transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-     * Add a game contract to the approved list
+     * Add or update a game contract registration
+     *
+     * Registers a game contract with a developer address for reward distribution.
+     * Can be called multiple times to update the developer address.
+     *
+     * # Arguments
+     * * `game_id` - Address of the game contract to register
+     * * `developer` - Address to receive developer rewards for this game
      *
      * # Errors
      * * `NotAdmin` - If caller is not the admin
      */
-    add_game: ({ id }: {
-        id: string;
+    add_game: ({ game_id, developer }: {
+        game_id: string;
+        developer: string;
     }, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>;
     /**
      * Construct and simulate a end_game transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -519,11 +598,14 @@ export interface Client {
      * Construct and simulate a remove_game transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
      * Remove a game contract from the approved list
      *
+     * Note: If the game has contributions in the current epoch, those will be
+     * forfeited (developer cannot claim rewards for removed games).
+     *
      * # Errors
      * * `NotAdmin` - If caller is not the admin
      */
-    remove_game: ({ id }: {
-        id: string;
+    remove_game: ({ game_id }: {
+        game_id: string;
     }, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>;
     /**
      * Construct and simulate a update_config transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -541,11 +623,12 @@ export interface Client {
      * * `new_reserve_token_ids` - New reserve token IDs for claiming BLND emissions (optional)
      * * `new_free_fp_per_epoch` - New base FP for free play (optional)
      * * `new_min_deposit_to_claim` - New minimum deposit to claim rewards (optional)
+     * * `new_dev_reward_share` - New portion of epoch rewards for game developers (optional)
      *
      * # Errors
      * * `NotAdmin` - If caller is not the admin
      */
-    update_config: ({ new_fee_vault, new_soroswap_router, new_blnd_token, new_usdc_token, new_epoch_duration, new_reserve_token_ids, new_free_fp_per_epoch, new_min_deposit_to_claim }: {
+    update_config: ({ new_fee_vault, new_soroswap_router, new_blnd_token, new_usdc_token, new_epoch_duration, new_reserve_token_ids, new_free_fp_per_epoch, new_min_deposit_to_claim, new_dev_reward_share }: {
         new_fee_vault: Option<string>;
         new_soroswap_router: Option<string>;
         new_blnd_token: Option<string>;
@@ -554,6 +637,7 @@ export interface Client {
         new_reserve_token_ids: Option<Array<u32>>;
         new_free_fp_per_epoch: Option<i128>;
         new_min_deposit_to_claim: Option<i128>;
+        new_dev_reward_share: Option<i128>;
     }, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>;
     /**
      * Construct and simulate a select_faction transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -574,6 +658,33 @@ export interface Client {
         player: string;
         faction: u32;
     }, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>;
+    /**
+     * Construct and simulate a claim_dev_reward transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+     * Claim developer reward for a specific epoch
+     *
+     * Developers claim their aggregated share of the epoch's dev reward pool
+     * proportional to total FP contributed through all their registered games.
+     *
+     * **Note:** To check claimable amounts or claim status before calling,
+     * use transaction simulation. This is the idiomatic Soroban pattern.
+     *
+     * # Arguments
+     * * `developer` - Developer address claiming rewards
+     * * `epoch` - Epoch number to claim from
+     *
+     * # Returns
+     * Amount of USDC claimed and transferred to developer
+     *
+     * # Errors
+     * * `EpochNotFinalized` - If epoch doesn't exist or isn't finalized
+     * * `DevRewardAlreadyClaimed` - If already claimed for this epoch
+     * * `GameNoContributions` - If developer has no contributions this epoch
+     * * `ContractPaused` - If contract is in emergency pause mode
+     */
+    claim_dev_reward: ({ developer, epoch }: {
+        developer: string;
+        epoch: u32;
+    }, options?: MethodOptions) => Promise<AssembledTransaction<Result<i128>>>;
     /**
      * Construct and simulate a get_epoch_player transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
      * Get player's epoch-specific information for any epoch
@@ -648,7 +759,7 @@ export declare class Client extends ContractClient {
     readonly options: ContractClientOptions;
     static deploy<T = Client>(
     /** Constructor/Initialization Args for the contract's `__constructor` method */
-    { admin, fee_vault, soroswap_router, blnd_token, usdc_token, epoch_duration, reserve_token_ids, free_fp_per_epoch, min_deposit_to_claim }: {
+    { admin, fee_vault, soroswap_router, blnd_token, usdc_token, epoch_duration, reserve_token_ids, free_fp_per_epoch, min_deposit_to_claim, dev_reward_share }: {
         admin: string;
         fee_vault: string;
         soroswap_router: string;
@@ -658,6 +769,7 @@ export declare class Client extends ContractClient {
         reserve_token_ids: Array<u32>;
         free_fp_per_epoch: i128;
         min_deposit_to_claim: i128;
+        dev_reward_share: i128;
     }, 
     /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
     options: MethodOptions & Omit<ContractClientOptions, "contractId"> & {
@@ -687,6 +799,7 @@ export declare class Client extends ContractClient {
         remove_game: (json: string) => AssembledTransaction<Result<void, import("@stellar/stellar-sdk/contract").ErrorMessage>>;
         update_config: (json: string) => AssembledTransaction<Result<void, import("@stellar/stellar-sdk/contract").ErrorMessage>>;
         select_faction: (json: string) => AssembledTransaction<Result<void, import("@stellar/stellar-sdk/contract").ErrorMessage>>;
+        claim_dev_reward: (json: string) => AssembledTransaction<Result<bigint, import("@stellar/stellar-sdk/contract").ErrorMessage>>;
         get_epoch_player: (json: string) => AssembledTransaction<Result<EpochPlayer, import("@stellar/stellar-sdk/contract").ErrorMessage>>;
         get_current_epoch: (json: string) => AssembledTransaction<number>;
         claim_epoch_reward: (json: string) => AssembledTransaction<Result<bigint, import("@stellar/stellar-sdk/contract").ErrorMessage>>;

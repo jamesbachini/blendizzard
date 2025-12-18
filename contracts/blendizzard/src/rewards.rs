@@ -1,8 +1,8 @@
 use soroban_fixed_point_math::FixedPoint;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{token, Address, Env};
 
 use crate::errors::Error;
-use crate::events::emit_rewards_claimed;
+use crate::events::{emit_dev_reward_claimed, emit_rewards_claimed};
 use crate::fee_vault_v2::Client as FeeVaultClient;
 use crate::storage;
 use crate::types::SCALAR_7;
@@ -124,7 +124,7 @@ pub(crate) fn claim_epoch_reward(env: &Env, player: &Address, epoch: u32) -> Res
     storage::set_claimed(env, player, epoch);
 
     // Transfer USDC to player, then deposit into fee-vault
-    let config = storage::get_config(env);
+    // (reuse config from earlier check)
     let usdc_client = soroban_sdk::token::Client::new(env, &config.usdc_token);
 
     // Step 1: Transfer USDC from contract to player
@@ -137,6 +137,93 @@ pub(crate) fn claim_epoch_reward(env: &Env, player: &Address, epoch: u32) -> Res
 
     // Emit event
     emit_rewards_claimed(env, player, epoch, player_faction, reward_amount);
+
+    Ok(reward_amount)
+}
+
+/// Claim developer reward for a specific epoch
+///
+/// Developers claim their aggregated share of the epoch's dev reward pool
+/// proportional to total FP contributed through all their registered games.
+///
+/// **No minimum deposit required** - the admin-only game registration
+/// serves as the anti-sybil mechanism for developers.
+///
+/// Formula:
+/// ```
+/// dev_reward = (dev_fp / total_game_fp) * dev_reward_pool
+/// ```
+///
+/// # Arguments
+/// * `env` - Contract environment
+/// * `developer` - Developer address claiming rewards
+/// * `epoch` - Epoch number to claim from
+///
+/// # Returns
+/// Amount of USDC claimed and transferred to developer
+///
+/// # Errors
+/// * `EpochNotFinalized` - If epoch doesn't exist or isn't finalized
+/// * `DevRewardAlreadyClaimed` - If already claimed for this epoch
+/// * `GameNoContributions` - If developer has no contributions this epoch
+pub(crate) fn claim_dev_reward(env: &Env, developer: &Address, epoch: u32) -> Result<i128, Error> {
+    // Authenticate developer directly
+    developer.require_auth();
+
+    // Check if already claimed
+    if storage::has_dev_claimed(env, developer, epoch) {
+        return Err(Error::DevRewardAlreadyClaimed);
+    }
+
+    // Get epoch info
+    let epoch_info = storage::get_epoch(env, epoch).ok_or(Error::EpochNotFinalized)?;
+
+    // Check if epoch is finalized
+    if !epoch_info.is_finalized {
+        return Err(Error::EpochNotFinalized);
+    }
+
+    // Get developer's epoch contribution (aggregated across all their games)
+    let epoch_game =
+        storage::get_epoch_game(env, epoch, developer).ok_or(Error::GameNoContributions)?;
+
+    if epoch_game.total_fp_contributed == 0 {
+        return Err(Error::GameNoContributions);
+    }
+
+    // Check total game FP (denominator for share calculation)
+    if epoch_info.total_game_fp == 0 {
+        return Err(Error::DivisionByZero);
+    }
+
+    // Calculate reward share
+    // Formula: (dev_fp / total_game_fp) * dev_reward_pool
+    let reward_amount = calculate_reward_share(
+        epoch_game.total_fp_contributed,
+        epoch_info.total_game_fp,
+        epoch_info.dev_reward_pool,
+    )?;
+
+    if reward_amount == 0 {
+        return Err(Error::GameNoContributions);
+    }
+
+    // Mark as claimed
+    storage::set_dev_claimed(env, developer, epoch);
+
+    // Transfer USDC directly to developer (no vault deposit)
+    let config = storage::get_config(env);
+    let usdc_client = token::Client::new(env, &config.usdc_token);
+    usdc_client.transfer(&env.current_contract_address(), developer, &reward_amount);
+
+    // Emit event
+    emit_dev_reward_claimed(
+        env,
+        developer,
+        epoch,
+        epoch_game.total_fp_contributed,
+        reward_amount,
+    );
 
     Ok(reward_amount)
 }

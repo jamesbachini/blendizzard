@@ -10,7 +10,8 @@
 //! Blendizzard contract. Games cannot be started or completed without FP involvement.
 
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, IntoVal, contract, contractclient, contracterror, contractimpl, contracttype, vec
+    contract, contractclient, contracterror, contractimpl, contracttype, vec, Address, Bytes,
+    BytesN, Env, IntoVal,
 };
 
 // Import Blendizzard contract interface
@@ -135,12 +136,22 @@ impl NumberGuessContract {
     ) -> Result<(), Error> {
         // Prevent self-play: Player 1 and Player 2 must be different
         if player1 == player2 {
-            panic!("Cannot play against yourself: Player 1 and Player 2 must be different addresses");
+            panic!(
+                "Cannot play against yourself: Player 1 and Player 2 must be different addresses"
+            );
         }
 
         // Require authentication from both players (they consent to wagering FP)
-        player1.require_auth_for_args(vec![&env, session_id.into_val(&env), player1_wager.into_val(&env)]);
-        player2.require_auth_for_args(vec![&env, session_id.into_val(&env), player2_wager.into_val(&env)]);
+        player1.require_auth_for_args(vec![
+            &env,
+            session_id.into_val(&env),
+            player1_wager.into_val(&env),
+        ]);
+        player2.require_auth_for_args(vec![
+            &env,
+            session_id.into_val(&env),
+            player2_wager.into_val(&env),
+        ]);
 
         // Get Blendizzard address
         let blendizzard_addr: Address = env
